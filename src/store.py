@@ -1,29 +1,25 @@
-"""Store step: put chunk vectors into a local Qdrant collection.
-Stage 4 of the pipeline. Local on-disk mode — no server needed.
-"""
+"""Store step: put source+locator-tagged chunk vectors into local Qdrant."""
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-
 from src.config import QDRANT_PATH, COLLECTION_NAME, EMBED_DIM
 
 _client = None
 
 
-def get_client() -> QdrantClient:
+def get_client():
     global _client
     if _client is None:
-        _client = QdrantClient(path=QDRANT_PATH)   # on-disk, persistent
+        _client = QdrantClient(path=QDRANT_PATH)
     return _client
 
-def close() -> None:
-    """Release the on-disk lock explicitly (avoids shutdown warnings)."""
+
+def close():
     global _client
     if _client is not None:
-        _client.close()
-        _client = None
+        _client.close(); _client = None
 
-def reset_collection() -> None:
-    """Create the collection fresh (drops it first if it exists)."""
+
+def reset_collection():
     client = get_client()
     if client.collection_exists(COLLECTION_NAME):
         client.delete_collection(COLLECTION_NAME)
@@ -33,16 +29,17 @@ def reset_collection() -> None:
     )
 
 
-def upsert_chunks(chunks: list[dict], vectors: list[list[float]]) -> None:
-    """Store chunks + their vectors. Payload keeps page/text/id for retrieval."""
+def upsert_chunks(chunks, vectors):
     client = get_client()
     points = [
         PointStruct(
-            id=i,                                  # simple integer id per point
+            id=i,
             vector=vectors[i],
             payload={
-                "chunk_id": chunks[i]["id"],       # e.g. p1_c0
-                "page": chunks[i]["page"],
+                "chunk_id": chunks[i]["id"],
+                "source": chunks[i].get("source", "document"),
+                "loc": chunks[i].get("loc", ""),
+                "order": chunks[i].get("order", 0),
                 "text": chunks[i]["text"],
             },
         )
@@ -51,22 +48,5 @@ def upsert_chunks(chunks: list[dict], vectors: list[list[float]]) -> None:
     client.upsert(collection_name=COLLECTION_NAME, points=points)
 
 
-def count() -> int:
+def count():
     return get_client().count(collection_name=COLLECTION_NAME).count
-
-
-if __name__ == "__main__":
-    from src.ingest import load_pdf, _first_pdf
-    from src.chunk import chunk_pages
-    from src.embed import embed_texts
-
-    pages = load_pdf(_first_pdf())
-    chunks = chunk_pages(pages)
-    vectors = embed_texts([c["text"] for c in chunks])
-
-    reset_collection()
-    upsert_chunks(chunks, vectors)
-
-    print(f"Collection: {COLLECTION_NAME}")
-    print(f"Points stored: {count()}   (expect {len(chunks)})")
-    close()
