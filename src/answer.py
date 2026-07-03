@@ -1,6 +1,8 @@
 """Answer step: grounded, cited answer. Size-aware (small KB = whole doc;
-large KB = retrieve + re-rank). Citations name the source and locator.
+large KB = retrieve + re-rank). Adds a quiet "check the equation" note only
+when the answer draws on an OCR'd (scanned/handwritten) source AND contains math.
 """
+import re
 import ollama
 from src.config import LLM_MODEL, MIN_RETRIEVAL_SCORE, SMALL_KB_MAX
 from src.retrieve import retrieve
@@ -15,6 +17,12 @@ SYSTEM_PROMPT = (
     "the answer, say exactly: \"I don't have that in the material.\" Do not use "
     "outside knowledge."
 )
+
+_MATH_RE = re.compile(r"\$|\\[a-zA-Z]+|[\u2264\u2265\u230a\u230b\u2211\u222b\u2208\u221a\u2260\u00b1\u00d7\u00f7]|\b\d+\s*[+\-*/=]\s*\d+|\s=\s")
+
+
+def _has_math(t: str) -> bool:
+    return bool(_MATH_RE.search(t))
 
 
 def ask_llm(system: str, user: str) -> str:
@@ -53,32 +61,40 @@ def answer(question: str) -> dict:
 
     weak = top_score < MIN_RETRIEVAL_SCORE
     context = build_context(hits)
-    user_msg = f"Context passages:\n{context}\n\nQuestion: {question}"
-    reply = ask_llm(SYSTEM_PROMPT, user_msg)
+    reply = ask_llm(SYSTEM_PROMPT, f"Context passages:\n{context}\n\nQuestion: {question}")
+
+    # quiet nudge: only when a scanned/handwritten source was used AND math is present
+    ocr_used = any(h.get("ocr") for h in hits)
+    caveat = ("\u21b3 This draws on a handwritten/scanned source \u2014 worth "
+              "double-checking the equation.") if (ocr_used and _has_math(reply)) else ""
 
     return {
         "answer": reply,
+        "caveat": caveat,
         "top_score": top_score,
         "weak": weak,
         "mode": mode,
-        "sources": [{"source": h["source"], "loc": h["loc"], "score": h["score"]} for h in hits],
+        "sources": [{"source": h["source"], "loc": h["loc"],
+                     "score": h["score"], "ocr": h["ocr"]} for h in hits],
     }
 
 
 if __name__ == "__main__":
     import sys
     from src.store import close
-    q = " ".join(sys.argv[1:]) or "What visualization tools does the course cover?"
+    q = " ".join(sys.argv[1:]) or "State the Division Algorithm"
     print(f"Q: {q}\n")
     result = answer(q)
     print(f"[{result['mode']}]\n")
     print("ANSWER:")
     print(result["answer"])
+    if result["caveat"]:
+        print("\n" + result["caveat"])
     warn = "  \u26a0 low confidence" if result["weak"] else ""
     print(f"\n(top retrieval score: {result['top_score']:.3f}{warn})")
     seen = []
     for s in result["sources"]:
-        tag = f"{s['source']} \u00b7 {s['loc']}"
+        tag = f"{s['source']} \u00b7 {s['loc']}" + (" [OCR]" if s["ocr"] else "")
         if tag not in seen:
             seen.append(tag)
     print("sources:", "; ".join(seen))

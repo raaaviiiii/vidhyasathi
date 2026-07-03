@@ -1,5 +1,5 @@
-"""Chunk step: split record texts into overlapping windows, keeping source
-and locator. Output: [{id, source, loc, order, text}].
+"""Chunk step: split records into overlapping windows, keeping source, locator,
+and the ocr flag. Output: [{id, source, loc, order, text, ocr}].
 """
 import re
 from src.config import CHUNK_SIZE, CHUNK_OVERLAP
@@ -30,8 +30,7 @@ def chunk_text(text, size, overlap):
     return chunks
 
 
-def chunk_records(records: list[dict], source: str = "document") -> list[dict]:
-    """Turn [{loc, order, text}] into [{id, source, loc, order, text}]."""
+def chunk_records(records, source="document"):
     slug = _slug(source)
     out = []
     for rec in records:
@@ -42,14 +41,6 @@ def chunk_records(records: list[dict], source: str = "document") -> list[dict]:
                 "loc": rec["loc"],
                 "order": rec["order"],
                 "text": piece,
+                "ocr": rec.get("ocr", False),
             })
     return out
-
-
-if __name__ == "__main__":
-    from src.ingest import list_documents, load_document, source_label
-    d = list_documents()[0]
-    recs = load_document(d)
-    chunks = chunk_records(recs, source=source_label(d))
-    print(f"{len(recs)} records -> {len(chunks)} chunks")
-    print(chunks[0]["id"], "|", chunks[0]["source"], "|", chunks[0]["loc"])

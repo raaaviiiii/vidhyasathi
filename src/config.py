@@ -1,26 +1,23 @@
-"""Central configuration for Vidhyasathi.
-Every tunable path, model name, and threshold lives here so the rest of
-the code never hard-codes them.
-"""
+"""Central configuration for Vidhyasathi."""
 from pathlib import Path
 
 # --- paths ---
-BASE_DIR = Path(__file__).resolve().parent.parent   # the vidhyasathi/ root
+BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
-DOCS_DIR = DATA_DIR / "docs"                         # source PDFs / notes go here
+DOCS_DIR = DATA_DIR / "docs"
 
-# --- chunking (how we split a document before embedding) ---
-CHUNK_SIZE = 800        # approx characters per chunk
-CHUNK_OVERLAP = 150     # characters shared between neighbouring chunks
+# --- chunking ---
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 150
 
 # --- embeddings ---
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # small, fast, solid baseline
-EMBED_DIM = 384                                         # vector size for that model
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBED_DIM = 384
 
 # --- retrieval ---
-TOP_K = 5               # final chunks kept AFTER re-ranking (large-KB mode)
+TOP_K = 5
 
-# --- vector store (Qdrant, local on-disk for now) ---
+# --- vector store ---
 COLLECTION_NAME = "vidhyasathi_kb"
 QDRANT_PATH = str(BASE_DIR / "qdrant_storage")
 
@@ -28,15 +25,29 @@ QDRANT_PATH = str(BASE_DIR / "qdrant_storage")
 OLLAMA_BASE_URL = "http://localhost:11434"
 LLM_MODEL = "llama3.1:8b"
 
-# --- confidence gate (tuned later) ---
-MIN_RETRIEVAL_SCORE = 0.35   # below this, retrieval counts as "weak"
+# --- confidence gate ---
+MIN_RETRIEVAL_SCORE = 0.35
 
-# --- re-ranking (cross-encoder sharpens the first-stage vector hits) ---
-RETRIEVE_CANDIDATES = 15     # candidates the vector search pulls BEFORE re-ranking
+# --- re-ranking ---
+RETRIEVE_CANDIDATES = 15
 RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-RERANK_WEIGHT = 0.7          # blend weight: 0.7*rerank + 0.3*cosine
+RERANK_WEIGHT = 0.7
 
 # --- size-aware context ---
-# If the whole KB has <= this many chunks, it's "small": feed the entire
-# document to the model in page order instead of pruning to TOP_K.
 SMALL_KB_MAX = 30
+
+# --- OCR (adaptive vision fallback for scanned / handwritten / image files) ---
+OCR_DPI = 200
+OCR_MIN_TEXT = 20      # a page with fewer chars than this is treated as scanned -> OCR
+# tiers, easy -> hard; escalation walks down this list
+OCR_TIERS = ["claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-4-8"]
+OCR_BLUR_FLOOR = 60.0          # sharpness below this = blurry scan -> skip Haiku
+OCR_MAX_TOKENS = 2000
+OCR_CACHE_PATH = str(BASE_DIR / "ocr_cache.json")   # pay per page once, ever
+OCR_COST_LOG = str(BASE_DIR / "ocr_cost_log.csv")
+# ROUGH per-page USD estimates for the running spend log — tune to current pricing
+OCR_EST_COST = {
+    "claude-haiku-4-5-20251001": 0.003,
+    "claude-sonnet-5": 0.010,
+    "claude-opus-4-8": 0.050,
+}

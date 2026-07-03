@@ -1,5 +1,5 @@
-"""Retrieve step: given a question, return the most similar chunks with
-their source + locator. Limit capped at KB size (adaptive to document size).
+"""Retrieve step: nearest chunks with source, locator, and ocr flag.
+Limit capped at KB size (adaptive to document size).
 """
 from src.config import COLLECTION_NAME, RETRIEVE_CANDIDATES
 from src.embed import embed_query
@@ -26,6 +26,7 @@ def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES) -> list[dict]:
         "order": h.payload.get("order", 0),
         "chunk_id": h.payload["chunk_id"],
         "text": h.payload["text"],
+        "ocr": h.payload.get("ocr", False),
     } for h in hits]
 
 
@@ -35,6 +36,7 @@ if __name__ == "__main__":
     q = " ".join(sys.argv[1:]) or "What visualization tools does the course cover?"
     print(f"Q: {q}\n")
     for i, h in enumerate(retrieve(q), 1):
-        print(f"[{i}] {h['score']:.3f}  {h['source']} · {h['loc']}")
-        print(f"    {h['text'][:140]}...\n")
+        tag = " [OCR]" if h["ocr"] else ""
+        print(f"[{i}] {h['score']:.3f}  {h['source']} · {h['loc']}{tag}")
+        print(f"    {h['text'][:130]}...\n")
     close()

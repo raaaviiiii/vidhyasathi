@@ -1,4 +1,4 @@
-"""Store step: put source+locator-tagged chunk vectors into local Qdrant."""
+"""Store step: source/locator/ocr-tagged chunk vectors into local Qdrant."""
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from src.config import QDRANT_PATH, COLLECTION_NAME, EMBED_DIM
@@ -41,6 +41,7 @@ def upsert_chunks(chunks, vectors):
                 "loc": chunks[i].get("loc", ""),
                 "order": chunks[i].get("order", 0),
                 "text": chunks[i]["text"],
+                "ocr": chunks[i].get("ocr", False),
             },
         )
         for i in range(len(chunks))

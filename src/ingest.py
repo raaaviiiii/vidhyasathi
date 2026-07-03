@@ -1,21 +1,23 @@
-"""Ingest step: a LOADER REGISTRY that turns any supported document into a
-common record shape: {loc, order, text}.
-  loc   = human-readable location for citations (p3, "slide 4", "Marks row 2",
-          a heading) — generalises "page" across formats.
-  order = integer for stable in-document ordering.
-Adding a new format = write one loader and register it in LOADERS. Nothing
-downstream changes.
+"""Ingest step: a LOADER REGISTRY that turns any supported document into the
+common record shape {loc, order, text[, ocr]}.
+
+Digital formats load their text directly. Anything with no extractable text
+(scanned PDF pages, image files, handwriting) falls through to the adaptive
+OCR engine (src/ocr.py) and is tagged ocr=True so the answer step can add a
+"check the equation" nudge when needed.
 """
 import csv
+import io
 import re
 from pathlib import Path
 
-from pypdf import PdfReader
+import pymupdf
 from docx import Document
 from pptx import Presentation
 from openpyxl import load_workbook
+from PIL import Image
 
-from src.config import DOCS_DIR
+from src.config import DOCS_DIR, OCR_DPI, OCR_MIN_TEXT
 
 
 def clean(text: str) -> str:
@@ -23,17 +25,25 @@ def clean(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# ---------- digital loaders ----------
 def _load_pdf(path: Path) -> list[dict]:
+    """Per page: use embedded text if present, else OCR the rendered page."""
+    doc = pymupdf.open(str(path))
     out = []
-    for i, page in enumerate(PdfReader(str(path)).pages, start=1):
-        t = clean(page.extract_text() or "")
-        if t:
+    for i, page in enumerate(doc, start=1):
+        t = clean(page.get_text() or "")
+        if len(t) >= OCR_MIN_TEXT:                       # real digital text
             out.append({"loc": f"p{i}", "order": i, "text": t})
+        else:                                            # scanned / handwritten
+            from src.ocr import ocr_image                # lazy: only import API here
+            png = page.get_pixmap(dpi=OCR_DPI).tobytes("png")
+            ocr_t = clean(ocr_image(png))
+            if ocr_t:
+                out.append({"loc": f"p{i}", "order": i, "text": ocr_t, "ocr": True})
     return out
 
 
 def _load_docx(path: Path) -> list[dict]:
-    """Segment a Word doc by heading; each section becomes one record."""
     doc = Document(str(path))
     out, buf, order, sec = [], [], 0, 0
     label = "body"
@@ -54,8 +64,7 @@ def _load_docx(path: Path) -> list[dict]:
         elif p.text.strip():
             buf.append(p.text)
     flush()
-
-    for tbl in doc.tables:                      # capture table rows too
+    for tbl in doc.tables:
         for row in tbl.rows:
             line = clean(" | ".join(c.text for c in row.cells))
             if line:
@@ -103,7 +112,6 @@ def _load_csv(path: Path) -> list[dict]:
 
 
 def _load_xlsx(path: Path) -> list[dict]:
-    """Each row -> 'Header: value; ...' so tabular data is retrievable."""
     wb = load_workbook(str(path), read_only=True, data_only=True)
     out, order = [], 0
     for ws in wb.worksheets:
@@ -119,7 +127,16 @@ def _load_xlsx(path: Path) -> list[dict]:
     return out
 
 
-# --- the registry: extension -> loader ---
+# ---------- image loader (pure OCR) ----------
+def _load_image(path: Path) -> list[dict]:
+    from src.ocr import ocr_image
+    img = Image.open(path).convert("RGB")
+    buf = io.BytesIO(); img.save(buf, format="PNG")
+    text = clean(ocr_image(buf.getvalue()))
+    return [{"loc": "image", "order": 1, "text": text, "ocr": True}] if text else []
+
+
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"}
 LOADERS = {
     ".pdf": _load_pdf,
     ".docx": _load_docx,
@@ -128,18 +145,17 @@ LOADERS = {
     ".md": _load_text,
     ".csv": _load_csv,
     ".xlsx": _load_xlsx,
+    **{e: _load_image for e in IMAGE_EXTS},
 }
 SUPPORTED = set(LOADERS)
 
 
 def list_documents() -> list[Path]:
-    """Every supported document in data/docs/, sorted."""
     return sorted(p for p in DOCS_DIR.iterdir()
                   if p.is_file() and p.suffix.lower() in SUPPORTED)
 
 
 def unsupported_files() -> list[Path]:
-    """Files present but not (yet) loadable — e.g. .doc, .xls, images, scans."""
     return sorted(p for p in DOCS_DIR.iterdir()
                   if p.is_file() and p.suffix.lower() not in SUPPORTED
                   and not p.name.startswith("."))
@@ -154,11 +170,8 @@ def source_label(path: Path) -> str:
 
 
 if __name__ == "__main__":
-    docs = list_documents()
-    print(f"{len(docs)} supported document(s):")
-    for d in docs:
+    for d in list_documents():
         recs = load_document(d)
-        print(f"  {source_label(d)} ({d.suffix}) -> {len(recs)} records")
-    skipped = unsupported_files()
-    if skipped:
-        print("skipped (unsupported):", ", ".join(p.name for p in skipped))
+        n_ocr = sum(1 for r in recs if r.get("ocr"))
+        print(f"{source_label(d)} ({d.suffix}) -> {len(recs)} records"
+              f"{f'  [{n_ocr} via OCR]' if n_ocr else ''}")

@@ -5,3 +5,7 @@ ollama
 python-docx
 python-pptx
 openpyxl
+pymupdf
+anthropic
+python-dotenv
+pillow
