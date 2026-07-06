@@ -27,6 +27,8 @@ LLM_MODEL = "llama3.1:8b"
 
 # --- confidence gate ---
 MIN_RETRIEVAL_SCORE = 0.35
+ANSWER_SCORE = 0.45   # >= this: confident -> answer directly
+HELP_SCORE   = 0.30   # >= this but < ANSWER_SCORE: answer + offer "ask a human"; below this: honest refuse
 
 # --- re-ranking ---
 RETRIEVE_CANDIDATES = 15
