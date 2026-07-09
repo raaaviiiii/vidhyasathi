@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vidhyāsathi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Eczar:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;1,500;1,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+<style>
+:root{
+  --base:#14100c; --base2:#0d0a06; --surface:#1e1913; --raised:#251e15; --raised2:#2c2418;
+  --gold:#d9b45a; --gold2:#f2d888; --saffron:#e8a24a; --saffron2:#f4b862; --vermillion:#cf5138;
+  --emerald:#5ecb83; --t1:#f2ead8; --t2:#b8ac97; --t3:#8a7f6b;
+  --hair:rgba(217,180,90,.18); --hair2:rgba(217,180,90,.30);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--base);color:var(--t1);font-family:Inter,sans-serif;overflow:hidden}
+/* faint jaali texture over everything */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+  background-image:var(--jaali);background-size:128px 128px}
+.hidden{display:none!important}
+
+/* ---------------- LOGIN ---------------- */
+#login{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  background:radial-gradient(1000px 620px at 50% -8%, rgba(232,162,74,.22), transparent 60%), var(--base)}
+#login .frieze{position:absolute;top:22px;left:0;width:100%;opacity:.5}
+#login .lcorner{position:absolute;opacity:.4;width:110px}
+.emblem{filter:drop-shadow(0 0 34px rgba(232,162,74,.4))}
+#login .wordmark{font-family:Eczar,serif;font-weight:600;font-size:36px;letter-spacing:.5px}
+#login .shloka{font-family:Eczar,serif;font-weight:500;font-size:18px;color:var(--gold)}
+.vdiv{display:flex;align-items:center;gap:9px;opacity:.9}
+.vdiv i{flex:1;height:1px;background:var(--hair2);width:40px}
+.vdiv b{width:5px;height:5px;background:var(--gold);transform:rotate(45deg)}
+#login .trans{font-family:"Cormorant Garamond",serif;font-style:italic;font-weight:500;font-size:18px;color:#ccb88e}
+.card{width:388px;margin-top:10px;background:var(--raised);border:1px solid var(--hair2);border-radius:22px;
+  padding:26px;box-shadow:0 20px 50px -10px rgba(0,0,0,.5);position:relative}
+.card::before{content:"";position:absolute;top:0;left:0;right:0;height:1.5px;border-radius:22px 22px 0 0;
+  background:linear-gradient(90deg,transparent,rgba(244,216,120,.5),transparent)}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px;border-radius:13px;
+  background:#332a1f;border:1px solid rgba(217,180,90,.24);color:var(--t1);font-size:14px;font-weight:500;cursor:pointer}
+.gbtn:hover{background:#3b3125}
+.ordiv{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--t2);font-size:12px}
+.ordiv i{flex:1;height:1px;background:var(--hair)}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:10.5px;letter-spacing:1px;color:rgba(217,180,90,.85);margin-bottom:7px;font-weight:500}
+.fld .ibox{display:flex;align-items:center;gap:10px;background:#191410;border:1px solid rgba(217,180,90,.2);border-radius:12px;padding:13px 14px}
+.fld input{flex:1;background:none;border:none;outline:none;color:var(--t1);font-size:14.5px;font-family:inherit}
+.fld input::placeholder{color:var(--t3)}
+.enter{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;padding:15px;border-radius:13px;border:none;cursor:pointer;
+  background:linear-gradient(180deg,var(--saffron2),var(--saffron));color:#2a1a06;font-weight:600;font-size:14.5px;font-family:inherit;
+  box-shadow:0 6px 18px -3px rgba(232,162,74,.4)}
+.enter:hover{filter:brightness(1.05)}
+.signup{text-align:center;margin-top:14px;color:var(--t2);font-size:13px}
+.signup b{color:var(--gold2);font-weight:600;cursor:pointer}
+
+/* ---------------- APP ---------------- */
+#app{position:relative;z-index:1;display:flex;height:100%}
+.sidebar{width:272px;flex:0 0 272px;background:rgba(30,25,19,.55);border-right:1px solid var(--hair);
+  padding:24px 18px 22px;display:flex;flex-direction:column;gap:22px;position:relative}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .wm{font-family:Eczar,serif;font-weight:600;font-size:19px;line-height:1}
+.brand .tg{font-size:8.5px;letter-spacing:1.6px;color:rgba(217,180,90,.85);margin-top:3px}
+.bdiv{display:flex;align-items:center;gap:9px}
+.bdiv i{flex:1;height:1px;background:var(--hair)}
+.bdiv b{width:6px;height:6px;background:var(--gold);opacity:.75;transform:rotate(45deg)}
+.newchat{display:flex;align-items:center;justify-content:center;gap:9px;padding:13px;border-radius:13px;border:none;cursor:pointer;
+  background:linear-gradient(180deg,var(--saffron2),var(--saffron));color:#2a1a06;font-weight:600;font-size:14px;font-family:inherit;
+  box-shadow:0 4px 14px -3px rgba(232,162,74,.35)}
+.nav{display:flex;flex-direction:column;gap:3px}
+.nav a{display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--t2);font-size:13.5px;font-weight:500;cursor:pointer;position:relative;text-decoration:none}
+.nav a.on{background:rgba(217,180,90,.1);color:var(--gold2)}
+.nav a.on::before{content:"";position:absolute;left:2px;top:50%;transform:translateY(-50%);width:3px;height:20px;border-radius:2px;background:var(--saffron)}
+.nav a:hover:not(.on){background:rgba(217,180,90,.05);color:var(--t1)}
+.wmk{position:absolute;bottom:78px;left:150px;width:180px;opacity:.05;pointer-events:none}
+.footer{margin-top:auto;display:flex;align-items:center;justify-content:space-between;
+  background:rgba(37,30,21,.55);border:1px solid var(--hair);border-radius:14px;padding:12px 13px;cursor:pointer}
+.footer .l{display:flex;align-items:center;gap:11px;color:#e6ddca;font-size:13px;font-weight:500}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;overflow:hidden}
+.bgm{position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:680px;opacity:.11;pointer-events:none;animation:spin 140s linear infinite}
+.topbar{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:20px 40px 12px;z-index:2}
+.pill{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:var(--raised);border:1px solid rgba(217,180,90,.26);font-size:13px;color:var(--t1)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--emerald);box-shadow:0 0 8px 1px rgba(94,203,131,.7);animation:pulse 2.2s ease-in-out infinite}
+.acct{display:flex;align-items:center;gap:9px;padding:5px 13px 5px 5px;border-radius:999px;background:var(--surface);border:1px solid rgba(217,180,90,.22);cursor:pointer}
+.acct .av{position:relative;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13.5px;color:#2a1a06;
+  background:linear-gradient(135deg,var(--saffron2),var(--saffron));border:1.5px solid rgba(217,180,90,.5)}
+.acct .av .pres{position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:var(--emerald);border:2px solid var(--surface)}
+.acct .nm{font-size:13px;font-weight:500}
+
+.stage{flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:0 40px}
+.stage::-webkit-scrollbar{width:8px}.stage::-webkit-scrollbar-thumb{background:rgba(217,180,90,.2);border-radius:8px}
+.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:22px;min-height:0;padding-bottom:24px}
+.hero .halo{position:relative;display:flex;align-items:center;justify-content:center}
+.hero .ring{position:absolute;width:184px;height:184px;opacity:.55}
+.hero h1{font-family:Eczar,serif;font-weight:600;font-size:48px}
+.hero h1 .sk{color:var(--gold)}
+.quote{line-height:1.6}
+.quote .sk{font-family:Eczar,serif;font-weight:600;font-size:23px;color:var(--gold)}
+.quote .en{display:block;font-family:"Cormorant Garamond",serif;font-style:italic;font-size:17px;color:#c9bda3;margin-top:4px}
+
+.transcript{padding:24px 0 20px;display:flex;flex-direction:column;gap:22px;max-width:820px;width:100%;margin:0 auto}
+.msg{display:flex;flex-direction:column;gap:6px;animation:rise .5s ease-out both}
+.msg.user{align-items:flex-end}
+.msg .who{font-size:11px;letter-spacing:.5px;color:var(--t3);font-weight:500;padding:0 4px}
+.bubble{max-width:88%;padding:15px 18px;border-radius:16px;line-height:1.62;font-size:15px}
+.msg.user .bubble{background:var(--raised);border:1px solid var(--hair)}
+.msg.bot .bubble{background:rgba(30,25,19,.5);border:1px solid var(--hair)}
+.msg.bot.refuse .bubble{border-color:rgba(207,81,56,.4);background:rgba(207,81,56,.07)}
+.msg.bot.web .bubble{border-color:rgba(217,180,90,.3)}
+.cite{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:500;
+  background:rgba(217,180,90,.14);border:1px solid rgba(217,180,90,.35);color:var(--gold2);white-space:nowrap;
+  animation:gild .7s ease-out both}
+.cite.web{background:rgba(94,203,131,.12);border-color:rgba(94,203,131,.35);color:#9fe3b7}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:2px 4px}
+.tag{font-size:11.5px;padding:3px 9px;border-radius:999px;border:1px solid var(--hair);color:var(--t2)}
+.tag.ok{color:#9fe3b7;border-color:rgba(94,203,131,.3)}
+.tag.warn{color:var(--saffron2);border-color:rgba(232,162,74,.35)}
+.tag.no{color:#e79178;border-color:rgba(207,81,56,.4)}
+.note{font-size:13px;color:var(--t2);padding:2px 4px;display:flex;gap:7px;align-items:flex-start}
+.note .em{color:var(--saffron2)}
+.srcline{font-size:12px;color:var(--t3);padding:2px 4px}
+.webdisc{font-size:12.5px;color:#9fe3b7;padding:6px 10px;background:rgba(94,203,131,.08);border:1px solid rgba(94,203,131,.2);border-radius:10px}
+.webdisc a{color:#9fe3b7;opacity:.8}
+.examq{padding:12px 14px;border:1px solid var(--hair);border-radius:12px;margin-bottom:10px}
+.examq .q{font-weight:600;margin-bottom:6px}
+.examq .a{font-size:14px;color:var(--t2)}
+
+/* kolam loading */
+.loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px 0}
+.kolam{width:110px;height:110px;animation:spin 8s linear infinite}
+.kolam path,.kolam circle,.kolam line{stroke:var(--gold);fill:none;stroke-width:1.4;
+  stroke-dasharray:1;stroke-dashoffset:1;animation:draw 2.6s ease-in-out infinite}
+.loading .lt{font-family:"Cormorant Garamond",serif;font-style:italic;color:var(--gold);font-size:16px}
+
+.composer{width:100%;max-width:844px;margin:0 auto 26px;background:var(--raised);border:1px solid var(--hair2);border-radius:22px;
+  padding:20px 16px 15px 22px;position:relative;box-shadow:0 18px 44px -8px rgba(0,0,0,.45)}
+.composer::before{content:"";position:absolute;top:0;left:0;right:0;height:1.5px;border-radius:22px 22px 0 0;
+  background:linear-gradient(90deg,transparent,rgba(244,216,120,.5),transparent)}
+.composer textarea{width:100%;background:none;border:none;outline:none;resize:none;color:var(--t1);font-size:16.5px;font-family:inherit;line-height:1.5;min-height:26px;max-height:160px}
+.composer textarea::placeholder{color:var(--t3)}
+.cbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(217,180,90,.16)}
+.cleft{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:999px;border:1px solid rgba(217,180,90,.2);
+  color:var(--t2);font-size:13.5px;font-weight:500;cursor:pointer;background:none}
+.chip.on{background:rgba(232,162,74,.15);border-color:rgba(232,162,74,.6);color:var(--gold2)}
+.csep{width:1px;height:20px;background:rgba(217,180,90,.18)}
+.toggle{display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--t2);font-size:13px}
+.track{width:30px;height:18px;border-radius:999px;background:rgba(217,180,90,.14);display:flex;align-items:center;padding:0 3px;transition:.2s}
+.track b{width:12px;height:12px;border-radius:50%;background:var(--t2);transition:.2s}
+.toggle.on .track{background:rgba(232,162,74,.35);justify-content:flex-end}
+.toggle.on .track b{background:var(--saffron2)}
+.send{width:46px;height:46px;border-radius:15px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--saffron2),var(--saffron));box-shadow:0 4px 14px -2px rgba(232,162,74,.4);position:relative;overflow:visible}
+.send:hover{filter:brightness(1.06)}
+.starters{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:0 auto 26px}
+.starter{display:flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;background:rgba(37,30,21,.6);
+  border:1px solid var(--hair);color:var(--t2);font-size:13px;cursor:pointer}
+.starter:hover{border-color:var(--hair2);color:var(--t1)}
+.ripple{position:absolute;inset:0;border-radius:15px;border:2px solid var(--saffron2);animation:ripple .8s ease-out forwards;pointer-events:none}
+
+/* ---------- animations ---------- */
+@keyframes bloom{0%{opacity:0;transform:scale(.08) rotate(-35deg)}55%{opacity:1}80%{transform:scale(1.06) rotate(0)}100%{transform:scale(1) rotate(0)}}
+@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@keyframes gild{0%{opacity:0;transform:scale(.8);background:rgba(244,216,120,.45)}100%{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.85)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes spinX{to{transform:translateX(-50%) rotate(360deg)}}
+@keyframes draw{0%{stroke-dashoffset:1}45%{stroke-dashoffset:0}75%{stroke-dashoffset:0}100%{stroke-dashoffset:-1}}
+@keyframes ripple{from{opacity:.8;transform:scale(1)}to{opacity:0;transform:scale(1.9)}}
+@keyframes flicker{0%,100%{opacity:.9;transform:scaleY(1)}25%{opacity:1;transform:scaleY(1.08)}50%{opacity:.82;transform:scaleY(.96)}75%{opacity:1}}
+.bloom{animation:bloom 1.1s cubic-bezier(.2,.8,.3,1) both}
+.flame{transform-origin:center bottom;animation:flicker 2.6s ease-in-out infinite}
+.bgm{animation:spinX 140s linear infinite}
+
+.overlay{position:fixed;inset:0;z-index:40;background:rgba(8,6,4,.72);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:24px}
+.overlay.show{display:flex}
+.modal{width:520px;max-width:92vw;max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--hair2);border-radius:20px;padding:26px;position:relative;box-shadow:0 30px 70px -10px rgba(0,0,0,.6)}
+.modal::before{content:"";position:absolute;top:0;left:0;right:0;height:1.5px;border-radius:20px 20px 0 0;background:linear-gradient(90deg,transparent,rgba(244,216,120,.5),transparent)}
+.modal h2{font-family:Eczar,serif;font-weight:600;font-size:22px;margin-bottom:4px}
+.modal .sub{color:var(--t2);font-size:13.5px;margin-bottom:18px;line-height:1.5}
+.modal .x{position:absolute;top:18px;right:18px;cursor:pointer;color:var(--t3);width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:15px}
+.modal .x:hover{background:rgba(217,180,90,.1);color:var(--t1)}
+.drop{border:1.5px dashed rgba(217,180,90,.4);border-radius:14px;padding:26px;text-align:center;cursor:pointer;transition:.2s}
+.drop:hover,.drop.drag{background:rgba(217,180,90,.07);border-color:var(--gold)}
+.drop .big{font-size:14px;color:var(--t1);margin-top:8px}
+.drop .small{font-size:12px;color:var(--t3);margin-top:4px}
+.doclist{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.doc{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--hair);border-radius:11px;font-size:13.5px}
+.doc .nm{flex:1;color:var(--t1);word-break:break-all}
+.doc .sz{color:var(--t3);font-size:12px;white-space:nowrap}
+.trow{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--hair)}
+.trow:last-child{border:none}
+.trow .k{color:var(--t2);font-size:13.5px}.trow .v{color:var(--t1);font-size:13.5px;font-weight:500}
+.btn{padding:9px 15px;border-radius:11px;border:1px solid var(--hair2);background:none;color:var(--t1);font-size:13px;cursor:pointer;font-family:inherit}
+.btn:hover{background:rgba(217,180,90,.08)}
+.btn.warn{color:#e79178;border-color:rgba(207,81,56,.4)}
+.recent{display:flex;flex-direction:column;gap:6px}
+.recent .r{padding:11px 13px;border:1px solid var(--hair);border-radius:11px;font-size:13.5px;color:var(--t2);cursor:pointer}
+.recent .r:hover{color:var(--t1);border-color:var(--hair2)}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;background:var(--raised);border:1px solid var(--hair2);color:var(--t1);padding:12px 18px;border-radius:12px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:.3s}
+.toast.show{opacity:1}
+.info{color:var(--t2);font-size:13.5px;line-height:1.7}.info b{color:var(--gold2)}.info p .cite,.info p .tag{margin-right:4px}
+.nav a{text-decoration:none}
+
+.bubble p{margin:0 0 10px}.bubble p:last-child{margin-bottom:0}
+.bubble strong{color:var(--gold2);font-weight:600}
+.bubble ul,.bubble ol{margin:8px 0 10px;padding-left:22px}
+.bubble li{margin:4px 0}
+.bubble h1,.bubble h2,.bubble h3,.bubble h4{font-family:Eczar,serif;color:var(--t1);margin:13px 0 8px;font-weight:600;line-height:1.3}
+.bubble h1{font-size:20px}.bubble h2{font-size:18px}.bubble h3{font-size:16px}.bubble h4{font-size:14.5px}
+.bubble code{background:rgba(217,180,90,.12);border:1px solid var(--hair);border-radius:6px;padding:1px 6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,monospace;color:var(--gold2)}
+.bubble pre{background:rgba(13,10,6,.6);border:1px solid var(--hair);border-radius:10px;padding:12px 14px;overflow:auto;margin:10px 0}
+.bubble pre code{background:none;border:none;padding:0;color:var(--t1)}
+.bubble blockquote{border-left:2px solid var(--hair2);padding-left:12px;color:var(--t2);margin:10px 0}
+.bubble a{color:var(--gold2)}
+.bubble table{border-collapse:collapse;margin:10px 0;font-size:13.5px;width:100%}
+.bubble th,.bubble td{border:1px solid var(--hair);padding:6px 10px;text-align:left}
+.bubble th{background:rgba(217,180,90,.08);color:var(--gold2)}
+.bubble hr{border:none;border-top:1px solid var(--hair);margin:12px 0}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login">
+  <div class="lcorner" style="top:120px;left:60px" data-fan="0"></div>
+  <div class="lcorner" style="top:120px;right:60px" data-fan="90"></div>
+  <div class="lcorner" style="bottom:70px;left:60px" data-fan="270"></div>
+  <div class="lcorner" style="bottom:70px;right:60px" data-fan="180"></div>
+  <div class="emblem bloom" id="loginEmblem" style="width:148px;height:148px"></div>
+  <div class="wordmark">Vidhyāsathi</div>
+  <div class="shloka">तमसो मा ज्योतिर्गमय</div>
+  <div class="vdiv"><i></i><b></b><i></i></div>
+  <div class="trans">“lead me from darkness to light”</div>
+  <div class="card">
+    <div class="fld" id="authName"><label>NAME</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M3.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anName" placeholder="Your name" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
+    <div class="fld"><label>EMAIL</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M2.6 4.6 8 8.6 13.4 4.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anEmail" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
+    <div class="fld"><label>PASSWORD</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="6.8" width="10" height="7" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5 6.8V5.4a3 3 0 0 1 6 0v1.4" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anPass" type="password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
+    <div id="authErr" style="color:#e79178;font-size:12.5px;margin:-4px 0 12px;display:none"></div>
+    <button class="enter" onclick="doAuth()"><span id="authBtnText">Create account</span> <svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 8h9M8.5 4.5 12.5 8l-4 3.5" fill="none" stroke="#291904" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <div class="signup" id="authToggle">Already have an account?  <b onclick="toggleAuth()">Sign in</b></div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" class="hidden">
+  <aside class="sidebar">
+    <div class="brand"><div id="sbMark" style="width:30px;height:31px"></div><div><div class="wm">Vidhyāsathi</div><div class="tg">KNOWLEDGE COMPANION</div></div></div>
+    <div class="bdiv"><i></i><b></b><i></i></div>
+    <button class="newchat" onclick="newChat()"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="#2a1a06" stroke-width="2" stroke-linecap="round"/></svg>New chat</button>
+    <nav class="nav">
+      <a class="on"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#e8a24a" stroke-width="1.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="#e8a24a" stroke-width="1.2" stroke-linecap="round"/></svg>Recent chats</a>
+      <a><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3.4" y="2.4" width="9.2" height="11.2" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5.6 6h4.8M5.6 8.3h4.8M5.6 10.6h3.4" stroke="#d9b45a" stroke-width="1.1"/></svg>My material</a>
+      <a><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Practice sets</a>
+      <a><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M6 10l-.6 3.6L8 12l2.6 1.6L10 10" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linejoin="round"/></svg>Trust &amp; citations</a>
+    </nav>
+    <div class="wmk" id="sbWmk"></div>
+    <div class="footer"><div class="l"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="2.7" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M9 2.6V4.4M9 13.6V15.4M2.6 9H4.4M13.6 9H15.4M4.5 4.5l1.3 1.3M12.2 12.2l1.3 1.3M13.5 4.5l-1.3 1.3M5.8 12.2l-1.3 1.3" stroke="#d9b45a" stroke-width="1.1" stroke-linecap="round"/></svg>Settings</div><svg width="13" height="13" viewBox="0 0 14 14"><path d="M5 3l4 4-4 4" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  </aside>
+
+  <main class="main">
+    <div class="bgm" id="bgMandala"></div>
+    <header class="topbar">
+      <div class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Active</span></div>
+      <div class="acct"><div class="av">R<span class="pres"></span></div><span class="nm">Ravi</span>
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round"/></svg></div>
+    </header>
+
+    <div class="stage" id="stage">
+      <div class="hero" id="hero">
+        <div class="halo"><div class="ring" id="heroRing"></div><div class="emblem bloom" id="heroEmblem" style="width:116px;height:120px"></div></div>
+        <h1><span class="sk">नमस्ते,</span> Ravi</h1>
+        <div class="quote"><span class="sk">विद्या ददाति विनयम्</span><span class="en">knowledge gives humility</span></div>
+      </div>
+      <div class="transcript hidden" id="transcript"></div>
+    </div>
+
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Ask from your notes…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" oninput="auto(this)"></textarea>
+      <div class="cbar">
+        <div class="cleft">
+          <button class="chip on" data-mode="quick" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 1.5 9.2 6.4 14 8 9.2 9.6 8 14.5 6.8 9.6 2 8 6.8 6.4Z" fill="#e8a24a"/></svg>Quick Answer</button>
+          <button class="chip" data-mode="teach" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach Me</button>
+          <button class="chip" data-mode="exam" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3.2" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M4.8 8 7 10.2l4.4-4.8" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Exam &amp; Practice</button>
+          <span class="csep"></span>
+          <div class="toggle" id="webToggle" onclick="this.classList.toggle('on')"><span class="track"><b></b></span>Web fallback</div>
+        </div>
+        <button class="send" onclick="send()"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 16.5V6M6.5 10.5 11 5.8l4.5 4.7" fill="none" stroke="#231604" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </div>
+    <div class="starters" id="starters">
+      <div class="starter" onclick="starter('Explain a concept from my notes')"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5 9.2 6.4 14 8 9.2 9.6 8 14.5 6.8 9.6 2 8 6.8 6.4Z" fill="#d9b45a"/></svg>Explain a concept</div>
+      <div class="starter" onclick="setModeByName('exam');document.getElementById('input').value='';document.getElementById('input').focus()"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Make a practice set</div>
+      <div class="starter" onclick="openGrade()"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M6 10l-.6 3.4L8 12l2.6 1.4L10 10" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Grade my answer</div>
+      <div class="starter" onclick="setModeByName('teach');document.getElementById('input').focus()"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach me step by step</div>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const API = location.origin;   // same-origin when served by app.py
+let mode='quick', history=[], busy=false;
+
+/* ---------- SVG art generators ---------- */
+function petal(cx,cy,r1,r2,w,tip){return `M ${cx} ${cy-r1} C ${cx+w} ${cy-(r1+r2)/2} ${cx+w*0.55} ${cy-r2+tip} ${cx} ${cy-r2} C ${cx-w*0.55} ${cy-r2+tip} ${cx-w} ${cy-(r1+r2)/2} ${cx} ${cy-r1} Z`;}
+function lotus(size){
+  let p=[],cx=100,cy=104;
+  for(let i=0;i<8;i++)p.push(`<path d="${petal(cx,cy,20,92,30,10)}" fill="#c6963a" fill-opacity=".9" stroke="#7a5a22" stroke-width="1" transform="rotate(${45*i} ${cx} ${cy})"/>`);
+  for(let i=0;i<8;i++)p.push(`<path d="${petal(cx,cy,14,66,24,8)}" fill="#e0bc62" stroke="#8a6a26" stroke-width=".9" transform="rotate(${45*i+22.5} ${cx} ${cy})"/>`);
+  for(let i=0;i<8;i++)p.push(`<path d="${petal(cx,cy,6,38,15,6)}" fill="#f2d888" stroke="#b99138" stroke-width=".7" transform="rotate(${45*i} ${cx} ${cy})"/>`);
+  p.push(`<circle cx="${cx}" cy="${cy}" r="10" fill="#f7e6a6" stroke="#b99138" stroke-width=".8"/>`);
+  return `<svg width="${size}" height="${size*1.04}" viewBox="0 0 200 208">${p.join('')}</svg>`;
+}
+function roundel(size){ // lotus + rings, for login
+  let p=[],g="#d9b45a";
+  p.push(`<circle cx="100" cy="100" r="94" fill="none" stroke="${g}" stroke-width="1" opacity=".65"/>`);
+  for(let i=0;i<16;i++)p.push(`<path d="${petal(100,100,54,88,11,5)}" fill="none" stroke="${g}" stroke-width=".9" opacity=".7" transform="rotate(${22.5*i} 100 100)"/>`);
+  for(let i=0;i<16;i++){const a=Math.PI/8*i;p.push(`<circle cx="${(100+94*Math.cos(a)).toFixed(1)}" cy="${(100+94*Math.sin(a)).toFixed(1)}" r="1.6" fill="${g}"/>`);}
+  p.push(`<circle cx="100" cy="100" r="50" fill="none" stroke="${g}" stroke-width=".8" opacity=".55"/>`);
+  for(let i=0;i<8;i++)p.push(`<path d="${petal(100,100,15,46,18,8)}" fill="#c6963a" stroke="#7a5a22" stroke-width=".9" transform="rotate(${45*i} 100 100)"/>`);
+  for(let i=0;i<8;i++)p.push(`<path d="${petal(100,100,10,32,13,6)}" fill="#e0bc62" stroke="#8a6a26" stroke-width=".8" transform="rotate(${45*i+22.5} 100 100)"/>`);
+  p.push(`<circle cx="100" cy="100" r="8" fill="#f7e6a6" stroke="#b99138" stroke-width=".8"/>`);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 200 200">${p.join('')}</svg>`;
+}
+function mandala(size,op){
+  let p=[],g="#d9b45a",MC=340;
+  [38,300,332].forEach(r=>p.push(`<circle cx="${MC}" cy="${MC}" r="${r}" fill="none" stroke="${g}" stroke-width="1.1"/>`));
+  for(let i=0;i<16;i++)p.push(`<path d="${petal(MC,MC,126,232,28,18)}" fill="none" stroke="${g}" stroke-width="1" transform="rotate(${22.5*i} ${MC} ${MC})"/>`);
+  for(let i=0;i<8;i++)p.push(`<path d="${petal(MC,MC,44,116,17,10)}" fill="none" stroke="${g}" stroke-width=".9" transform="rotate(${45*i+22.5} ${MC} ${MC})"/>`);
+  for(let i=0;i<24;i++){const a=Math.PI/12*i;p.push(`<circle cx="${(MC+316*Math.cos(a)).toFixed(1)}" cy="${(MC+316*Math.sin(a)).toFixed(1)}" r="2" fill="${g}"/>`);}
+  return `<svg width="${size}" height="${size}" viewBox="0 0 680 680" style="opacity:${op}">${p.join('')}</svg>`;
+}
+function ring(){return `<svg width="184" height="184" viewBox="0 0 184 184"><circle cx="92" cy="92" r="80" fill="none" stroke="#d9b45a" stroke-width="1"/><circle cx="92" cy="92" r="71" fill="none" stroke="#d9b45a" stroke-width=".7"/><circle cx="92" cy="12" r="2.1" fill="#d9b45a"/><circle cx="92" cy="172" r="2.1" fill="#d9b45a"/><circle cx="12" cy="92" r="2.1" fill="#d9b45a"/><circle cx="172" cy="92" r="2.1" fill="#d9b45a"/></svg>`;}
+function fan(rot){let s='';for(let k=0;k<4;k++){const a=(18+k*18)*Math.PI/180,w=7,r1=14,r2=52,bx=r1*Math.cos(a),by=r1*Math.sin(a),tx=r2*Math.cos(a),ty=r2*Math.sin(a),px=Math.cos(a+Math.PI/2),py=Math.sin(a+Math.PI/2),mx=(bx+tx)/2,my=(by+ty)/2;s+=`<path d="M${bx.toFixed(1)} ${by.toFixed(1)} Q${(mx+px*w).toFixed(1)} ${(my+py*w).toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)} Q${(mx-px*w).toFixed(1)} ${(my-py*w).toFixed(1)} ${bx.toFixed(1)} ${by.toFixed(1)} Z" fill="none" stroke="#d9b45a" stroke-width="1"/><circle cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="1.6" fill="#d9b45a"/>`;}return `<svg width="110" height="110" viewBox="-4 -4 62 62" style="transform:rotate(${rot}deg)">${s}<path d="M14 0A14 14 0 0 1 0 14" fill="none" stroke="#d9b45a" stroke-width="1"/></svg>`;}
+function frieze(){let f=`<line x1="60" y1="16" x2="1380" y2="16" stroke="#d9b45a" stroke-width=".9"/><line x1="60" y1="23" x2="1380" y2="23" stroke="#d9b45a" stroke-width=".9"/>`;for(let x=60;x<=1380;x+=48)f+=`<rect x="${x-2.5}" y="17" width="5" height="5" fill="#d9b45a" transform="rotate(45 ${x} 19.5)"/>`;return `<svg width="100%" height="40" viewBox="0 0 1440 40" preserveAspectRatio="none">${f}</svg>`;}
+function jaaliURI(){const s=128,r=64,r2=24;let e=[];const X=s/2,Y=s/2;e.push(`<rect x="${X-r}" y="${Y-r}" width="${2*r}" height="${2*r}" fill="none" stroke="%23d9b45a" stroke-width=".8"/>`);e.push(`<rect x="${X-r}" y="${Y-r}" width="${2*r}" height="${2*r}" fill="none" stroke="%23d9b45a" stroke-width=".8" transform="rotate(45 ${X} ${Y})"/>`);const X2=X+64,Y2=Y+64;e.push(`<rect x="${X2-r2}" y="${Y2-r2}" width="${2*r2}" height="${2*r2}" fill="none" stroke="%23d9b45a" stroke-width=".7" transform="rotate(45 ${X2} ${Y2})"/>`);return `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'>${e.join('')}</svg>")`;}
+function kolamSVG(){let p=[],g,MC=55;p.push(`<circle cx="55" cy="55" r="50" pathLength="1"/>`);for(let i=0;i<12;i++)p.push(`<path d="${petal(MC,MC,14,48,10,5)}" pathLength="1" transform="rotate(${30*i} ${MC} ${MC})"/>`);p.push(`<circle cx="55" cy="55" r="16" pathLength="1"/>`);return `<svg class="kolam" viewBox="0 0 110 110">${p.join('')}</svg>`;}
+
+/* ---------- init art ---------- */
+document.documentElement.style.setProperty('--jaali',jaaliURI());
+document.getElementById('loginEmblem').innerHTML=roundel(148);
+document.querySelectorAll('[data-fan]').forEach(el=>el.innerHTML=fan(+el.dataset.fan));
+document.getElementById('sbMark').innerHTML=lotus(30);
+document.getElementById('sbWmk').innerHTML=mandala(180,1);
+document.getElementById('heroEmblem').innerHTML=lotus(116);
+document.getElementById('heroRing').innerHTML=ring();
+document.getElementById('bgMandala').innerHTML=mandala(680,1);
+
+/* ---------- flow ---------- */
+function enter(){
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  // re-trigger bloom + stagger the hero
+  const em=document.getElementById('heroEmblem'); em.style.animation='none'; void em.offsetWidth; em.style.animation='';
+  const hero=document.getElementById('hero'); [...hero.children].forEach((c,i)=>{if(c!==em.parentElement){c.style.animation=`rise .7s ease-out ${.5+i*.15}s both`}});
+  document.getElementById('input').focus();
+}
+function auto(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,160)+'px'}
+function setMode(btn){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));btn.classList.add('on');mode=btn.dataset.mode}
+function setModeByName(m){document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.mode===m));mode=m}
+function starter(t){document.getElementById('input').value=t;auto(document.getElementById('input'));document.getElementById('input').focus()}
+function newChat(){saveCurrentChat();history=[];document.getElementById('transcript').innerHTML='';document.getElementById('transcript').classList.add('hidden');document.getElementById('hero').classList.remove('hidden')}
+
+function gild(text){
+  // escape then replace [tags] with gilded pills; [web · ...] gets the web style
+  let esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/\[([^\]]+)\]/g,(m,inner)=>{
+    const web=/^web\b/i.test(inner.trim());
+    return `<span class="cite${web?' web':''}">${web?'🌐 ':''}${inner}</span>`;
+  });
+}
+function mdGild(text){
+ text=String(text);
+ const math=[];
+ text=text.replace(/\$\$[\s\S]+?\$\$|\$[^\$\n]+?\$/g,m=>{math.push(m);return '@@M'+(math.length-1)+'@@';});
+ let html; try{html=window.marked?marked.parse(text,{breaks:true,gfm:true}):text;}catch(e){html=text;}
+ html=html.replace(/@@M(\d+)@@/g,(m,i)=>math[+i]);
+ html=html.replace(/\[([^\]\[]+)\]/g,(m,inner)=>{const web=/^web\b/i.test(inner.trim());return '<span class="cite'+(web?' web':'')+'">'+(web?'\ud83c\udf10 ':'')+inner+'</span>';});
+ return html;
+}
+function scrollDown(){const s=document.getElementById('stage');s.scrollTop=s.scrollHeight}
+
+function addUser(text){
+  const t=document.getElementById('transcript');
+  const d=document.createElement('div');d.className='msg user';
+  d.innerHTML=`<div class="who">YOU</div><div class="bubble">${text.replace(/</g,'&lt;')}</div>`;
+  t.appendChild(d);scrollDown();
+}
+function loader(){
+  const t=document.getElementById('transcript');
+  const d=document.createElement('div');d.className='msg bot';d.id='loader';
+  const lines=['drawing on your notes…','checking what the material holds…','composing carefully…'];
+  d.innerHTML=`<div class="loading">${kolamSVG()}<div class="lt">${lines[Math.floor(Math.random()*lines.length)]}</div></div>`;
+  t.appendChild(d);scrollDown();
+}
+function reveal(){document.getElementById('hero').classList.add('hidden');document.getElementById('transcript').classList.remove('hidden')}
+
+async function send(){
+  const inp=document.getElementById('input');const q=inp.value.trim();
+  if(!q||busy)return; busy=true;
+  reveal(); addUser(q); inp.value='';auto(inp);
+  ripple();
+  loader();
+  try{
+    if(mode==='exam'){
+      const r=await post('/api/exam',{topic:q,n:5}); renderExam(r);
+    }else{
+      const web=document.getElementById('webToggle').classList.contains('on');
+      const r=await post('/api/answer',{question:q,mode,web,history:mode==='teach'?history:[]});
+      renderAnswer(r);
+      if(mode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:r.answer});}
+    }
+  }catch(e){ renderError(e.message); }
+  busy=false;
+}
+async function post(path,body){
+  const res=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok)throw new Error('Backend error ('+res.status+'). Is app.py running?');
+  return res.json();
+}
+function killLoader(){const l=document.getElementById('loader');if(l)l.remove()}
+
+function renderAnswer(r){
+  killLoader();
+  const t=document.getElementById('transcript');
+  const d=document.createElement('div');
+  const kind=r.decision==='refuse'?'refuse':(r.decision==='answer_web'?'web':'');
+  d.className='msg bot '+kind;
+  let meta='';
+  const dm={answer:['ok','grounded'],answer_uncertain:['warn','tentative'],answer_web:['warn','from the web'],refuse:['no','not in material']};
+  const badge=dm[r.decision]||['','']; 
+  meta+=`<span class="tag ${badge[0]}">${badge[1]}</span>`;
+  if(typeof r.top_score==='number')meta+=`<span class="tag">score ${r.top_score.toFixed(2)}</span>`;
+  let extra='';
+  if(r.caveat)extra+=`<div class="note"><span class="em">↳</span> ${r.caveat.replace(/^↳\s*/,'')}</div>`;
+  if(r.web_used&&r.web_sources&&r.web_sources.length){
+    const urls=r.web_sources.map(s=>`<a href="${s.url}" target="_blank">${(s.url||'').replace(/^https?:\/\//,'').slice(0,40)}</a>`).join(', ');
+    extra+=`<div class="webdisc">🌐 Not in your notes — learned from the web, verify before trusting: ${urls}</div>`;
+  }
+  if(r.offer_help)extra+=`<div class="note"><span class="em">→</span> Not fully sure — you can ask a human helper.</div>`;
+  const src=(r.sources||[]).map(s=>s.source+' · '+s.loc).filter((v,i,a)=>a.indexOf(v)===i).slice(0,5).join(';  ');
+  d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">${mdGild(r.answer)}</div><div class="meta">${meta}</div>${extra}${src?`<div class="srcline">sources: ${src}</div>`:''}`;
+  t.appendChild(d);typeset(d.querySelector('.bubble'));scrollDown();
+}
+function renderExam(r){
+  killLoader();
+  const t=document.getElementById('transcript');
+  const d=document.createElement('div');d.className='msg bot';
+  if(!r.grounded){
+    d.classList.add('refuse');
+    d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">I don't have that in the material — I can't set questions on a topic that isn't in your notes.</div>`;
+  }else{
+    let items=(r.items||[]).map((it,i)=>`<div class="examq"><div class="q">Q${i+1}. ${it.q.replace(/</g,'&lt;')}</div><div class="a">${mdGild(it.a)}</div></div>`).join('');
+    if(!items)items=`<div class="a">${(r.raw||'').replace(/</g,'&lt;')}</div>`;
+    d.innerHTML=`<div class="who">PRACTICE SET · ${(r.topic||'').replace(/</g,'&lt;')}</div><div class="bubble">${items}</div>`;
+  }
+  t.appendChild(d);typeset(d);scrollDown();
+}
+function renderError(msg){
+  killLoader();
+  const t=document.getElementById('transcript');
+  const d=document.createElement('div');d.className='msg bot refuse';
+  d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">${msg}</div>`;
+  t.appendChild(d);scrollDown();
+}
+function typeset(el){ if(window.renderMathInElement){try{renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});}catch(e){}} }
+
+/* grade panel (from "Grade my answer") */
+function openGrade(){
+  const q=prompt('Which question are you answering?  (must be from your material)');
+  if(!q)return;
+  const a=prompt('Paste your answer to be graded:');
+  if(!a)return;
+  reveal();
+  const t=document.getElementById('transcript');
+  const u=document.createElement('div');u.className='msg user';
+  u.innerHTML=`<div class="who">YOU · answer to "${q.replace(/</g,'&lt;').slice(0,60)}"</div><div class="bubble">${a.replace(/</g,'&lt;')}</div>`;
+  t.appendChild(u);loader();
+  post('/api/grade',{question:q,student_answer:a}).then(r=>{
+    killLoader();
+    const d=document.createElement('div');d.className='msg bot'+(r.grounded?'':' refuse');
+    const body=r.grounded?`<b style="color:var(--gold2)">Feedback vs your notes (not a grade)</b><br>${mdGild(r.feedback)}`:"I don't have that in the material — I can't grade an answer on a topic that isn't in your notes.";
+    d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">${body}</div>`;
+    t.appendChild(d);typeset(d);scrollDown();
+  }).catch(e=>renderError(e.message));
+}
+
+/* send ripple */
+function ripple(){const b=document.querySelector('.send');const r=document.createElement('span');r.className='ripple';b.appendChild(r);setTimeout(()=>r.remove(),820);}
+/* ---------- modals + features ---------- */
+function openModal(h){document.getElementById('modal').innerHTML=h;document.getElementById('overlay').classList.add('show');}
+function closeModal(){document.getElementById('overlay').classList.remove('show');}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2800);}
+
+function openMaterial(){
+ openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>My material</h2><div class="sub">Everything Vidhy\u0101sathi grounds its answers in \u2014 upload your notes, syllabi, or past papers.</div>
+ <div class="drop" id="drop" onclick="document.getElementById('file').click()"><div style="font-size:22px;color:var(--gold)">\u2913</div><div class="big">Drop a file here, or click to choose</div><div class="small">PDF, image, or text \u2014 it gets chunked, embedded, and indexed</div></div>
+ <input id="file" type="file" style="display:none" onchange="doUpload(this.files[0])"/>
+ <div class="doclist" id="doclist"><div class="small" style="color:var(--t3)">loading\u2026</div></div>`);
+ setupDrop(); listMaterial();
+}
+function setupDrop(){const d=document.getElementById('drop');if(!d)return;
+ ['dragover','dragenter'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('drag')}));
+ ['dragleave'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('drag')}));
+ d.addEventListener('drop',ev=>{ev.preventDefault();d.classList.remove('drag');if(ev.dataTransfer.files[0])doUpload(ev.dataTransfer.files[0])});
+}
+async function listMaterial(){
+ try{const r=await fetch(API+'/api/material').then(x=>x.json());const el=document.getElementById('doclist');if(!el)return;
+  if(!r.docs||!r.docs.length){el.innerHTML='<div class="small" style="color:var(--t3)">No documents yet.</div>';return;}
+  el.innerHTML=r.docs.map(d=>`<div class="doc"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="1.5" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3.5" stroke="#d9b45a" stroke-width="1"/></svg><span class="nm">${d.name}</span><span class="sz">${(d.size/1024).toFixed(0)} KB</span></div>`).join('');
+ }catch(e){}
+}
+async function doUpload(file){
+ if(!file)return; toast('Uploading & indexing '+file.name+'\u2026');
+ const fd=new FormData();fd.append('file',file);
+ try{const r=await fetch(API+'/api/upload',{method:'POST',body:fd}).then(x=>x.json());
+  toast(r.indexed?('Indexed '+r.name+' \u2713'):('Saved '+r.name+' \u2014 indexing step needs setup')); listMaterial();
+ }catch(e){toast('Upload failed \u2014 is app.py running?')}
+}
+function openTrust(){
+ openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Trust &amp; citations</h2><div class="sub">How to read what Vidhy\u0101sathi tells you.</div><div class="info">
+ <p style="margin-bottom:11px"><span class="cite">Mod 1 \u00b7 p1</span> a <b>gilded tag</b> means that line came straight from your material.</p>
+ <p style="margin-bottom:11px"><span class="tag ok">grounded</span> fully supported by your notes.</p>
+ <p style="margin-bottom:11px"><span class="tag warn">tentative</span> weak match \u2014 offered with an ask-a-human option.</p>
+ <p style="margin-bottom:11px"><span class="tag no">not in material</span> an honest refusal instead of a made-up answer.</p>
+ <p><span class="cite web">\ud83c\udf10 web</span> a last-resort web answer, re-expressed in your notes' style and clearly disclosed.</p></div>`);
+}
+function openSettings(){
+ openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Settings</h2><div class="sub">Vidhy\u0101sathi runs entirely on your machine.</div>
+ <div class="trow"><span class="k">Model</span><span class="v">llama 3.1 \u00b7 local (Ollama)</span></div>
+ <div class="trow"><span class="k">Grounding</span><span class="v">your material only</span></div>
+ <div class="trow"><span class="k">Web fallback</span><span class="v">off by default</span></div>
+ <div class="trow"><span class="k">Recent chats</span><span class="v"><button class="btn warn" onclick="localStorage.removeItem('vs_chats');toast('Cleared');">Clear all</button></span></div>\n <div class="trow"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>
+ <div class="info" style="margin-top:16px">Answers are grounded in your uploaded notes and always show <b>where each line came from</b>. When the material doesn't cover something, it says so instead of guessing.</div>`);
+}
+function openRecent(){
+ const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');
+ const list=chats.length?chats.map((c,i)=>`<div class="r" onclick="restoreChat(${i})">${(c.title||'Chat')} <span style="color:var(--t3);font-size:11px">\u00b7 ${new Date(c.time).toLocaleString()}</span></div>`).join(''):'<div class="small" style="color:var(--t3)">No past chats yet.</div>';
+ openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Recent chats</h2><div class="sub">Saved in this browser.</div><div class="recent">${list}</div>`);
+}
+function restoreChat(i){const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');const c=chats[i];if(!c)return;
+ document.getElementById('hero').classList.add('hidden');const t=document.getElementById('transcript');t.classList.remove('hidden');t.innerHTML=c.html;history=c.history||[];closeModal();typeset(t);scrollDown();}
+function saveCurrentChat(){const t=document.getElementById('transcript');if(t.classList.contains('hidden')||!t.innerHTML.trim())return;
+ const f=t.querySelector('.msg.user .bubble');const title=f?f.textContent.slice(0,48):'Chat';
+ const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');chats.unshift({title,time:Date.now(),html:t.innerHTML,history});
+ localStorage.setItem('vs_chats',JSON.stringify(chats.slice(0,20)));}
+function attachNav(){const nav=document.querySelectorAll('.nav a');
+ if(nav[0])nav[0].onclick=openRecent;
+ if(nav[1])nav[1].onclick=openMaterial;
+ if(nav[2])nav[2].onclick=()=>{setModeByName('exam');toast('Exam mode \u2014 type a topic to generate a practice set');};
+ if(nav[3])nav[3].onclick=openTrust;
+ const ft=document.querySelector('.footer');if(ft)ft.onclick=openSettings;
+ window.addEventListener('beforeunload',saveCurrentChat);
+}
+
+/* ---------- auth ---------- */
+let authMode='signup';
+function toggleAuth(){authMode=authMode==='signup'?'login':'signup';
+ document.getElementById('authName').style.display=authMode==='signup'?'':'none';
+ document.getElementById('authBtnText').textContent=authMode==='signup'?'Create account':'Sign in';
+ document.getElementById('authToggle').innerHTML=authMode==='signup'?'Already have an account?  <b onclick="toggleAuth()">Sign in</b>':'New here?  <b onclick="toggleAuth()">Create an account</b>';
+ document.getElementById('authErr').style.display='none';}
+function esc(s){return (s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+function applyUser(name){localStorage.setItem('vs_user',name);
+ const first=(name.trim().split(/\s+/)[0])||name;
+ const h1=document.querySelector('.hero h1'); if(h1)h1.innerHTML='<span class="sk">\u0928\u092e\u0938\u094d\u0924\u0947,</span> '+esc(first);
+ const av=document.querySelector('.acct .av'); if(av)av.childNodes[0].nodeValue=(name.trim()[0]||'?').toUpperCase();
+ const nm=document.querySelector('.acct .nm'); if(nm)nm.textContent=first;}
+function signOut(){localStorage.removeItem('vs_user');localStorage.removeItem('vs_chats');location.reload();}
+async function doAuth(){
+ const name=(document.getElementById('anName').value||'').trim();
+ const email=(document.getElementById('anEmail').value||'').trim();
+ const pass=document.getElementById('anPass').value||'';
+ const err=document.getElementById('authErr');
+ if(!email||!pass||(authMode==='signup'&&!name)){err.textContent='Please fill everything in.';err.style.display='block';return;}
+ try{
+  const body=authMode==='signup'?{name,email,password:pass}:{email,password:pass};
+  const r=await fetch(API+(authMode==='signup'?'/api/signup':'/api/login'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
+  if(!r.ok){err.textContent=r.error||'Something went wrong.';err.style.display='block';return;}
+  applyUser(r.name); enter();
+ }catch(e){err.textContent='Server not reachable \u2014 is app.py running?';err.style.display='block';}
+}
+
+attachNav();
+const _u=localStorage.getItem('vs_user'); if(_u){applyUser(_u);enter();}
+</script>
+</body>
+</html>
