@@ -25,7 +25,8 @@ Confidence gate (CRAG-style), identical in every mode:
 """
 import re
 import ollama
-from src.config import LLM_MODEL, ANSWER_SCORE, HELP_SCORE, SMALL_KB_MAX
+from src.config import (LLM_MODEL, ANSWER_SCORE, HELP_SCORE, SMALL_KB_MAX,
+                        STRONG_SKIP_SCORE, BROAD_TOP_K, RETRIEVE_CANDIDATES)
 from src.retrieve import retrieve
 from src.rerank import rerank
 from src.store import count
@@ -74,6 +75,38 @@ GROUND_CHECK = (
     "related, reply NO."
 )
  
+# --- Overview: broad "explain everything in the module" asks -----------------
+# A pointed groundedness check ("do these passages answer THIS?") always fails for a
+# whole-module ask, so those questions used to refuse. For a broad ask we instead
+# synthesise a structured tour of whatever the student's own passages actually cover.
+OVERVIEW_PROMPT = (
+    "You are a study assistant giving a STRUCTURED OVERVIEW of the student's own "
+    "material. Using ONLY the context passages, identify the main concepts/topics they "
+    "cover and briefly explain each one.\n"
+    "- Present them as a short organised list: each item a concept name, then a one- or "
+    "two-line explanation, then the exact bracketed [source \u00b7 loc] tag it came from.\n"
+    "- Only include concepts that genuinely appear in the passages. Do NOT add anything "
+    "from outside knowledge, and do not pad with topics that aren't there.\n"
+    "- If the passages contain no teachable concepts at all, say exactly: "
+    "\"I don't have that in the material.\""
+)
+
+# Broad-intent triggers: an overview verb sitting next to a whole-scope word.
+_BROAD_PHRASES = (
+    "all the concept", "all concepts", "every concept", "all the topic", "all topics",
+    "main concept", "key concept", "main topic", "key topic", "main idea", "key idea",
+    "entire module", "whole module", "the module", "this module", "entire chapter",
+    "whole chapter", "the syllabus", "everything in", "everything about", "overview of",
+    "summarize", "summarise", "summary of", "outline of", "go over everything",
+    "what does this cover", "what is covered", "what do my notes cover",
+)
+
+
+def _is_broad(question: str) -> bool:
+    q = question.lower()
+    return any(p in q for p in _BROAD_PHRASES)
+
+
 # --- Layer 3: web-grounded, but re-expressed in the student's note style ------
 WEB_PROMPT = (
     "The student's OWN material does not cover this, so you are given WEB passages "
@@ -142,6 +175,19 @@ def _grounded(query: str, context: str) -> bool:
     resp = ask_llm(GROUND_CHECK,
                    f"Context passages:\n{context}\n\nQuestion: {query}\n\nAnswer YES or NO:")
     return resp.strip().lower().startswith("y")
+
+
+def _gate(query: str, context: str, top_score: float) -> bool:
+    """Three-band grounding decision, shared by answer/exam/grade.
+      score >= STRONG_SKIP_SCORE -> trust the strong match, SKIP the LLM check (latency).
+      score <  HELP_SCORE        -> too weak, refuse without a check.
+      in between                 -> run the explicit CRAG groundedness check.
+    Halves the model calls on confident hits (was: check + generate on every turn)."""
+    if top_score >= STRONG_SKIP_SCORE:
+        return True
+    if top_score < HELP_SCORE:
+        return False
+    return _grounded(query, context)
  
  
 def build_context(hits: list[dict]) -> str:
@@ -160,53 +206,69 @@ def _window_query(question: str, history: list[dict] | None) -> str:
     return " ".join(window)
  
  
-def _retrieve(query: str):
-    """Return (hits, top_score, mode_label) for a query."""
-    total = count()
+def _retrieve(query: str, user: str | None = None, broad: bool = False):
+    """Return (hits, top_score, mode_label) for a query, scoped to `user` if given.
+    `broad=True` widens the pool and keeps more chunks, for whole-module overviews."""
+    total = count(user)
     small = 0 < total <= SMALL_KB_MAX
+    keep = BROAD_TOP_K if broad else None          # None -> rerank's default TOP_K
     if small:
-        candidates = retrieve(query, top_k=total)
+        candidates = retrieve(query, top_k=total, user=user)
         top_score = max((c["score"] for c in candidates), default=0.0)
         hits = _doc_order(candidates)
         label = f"small-kb ({total} chunks): full context"
     else:
-        candidates = retrieve(query)
-        ranked = rerank(query, candidates)
+        cand_k = max(RETRIEVE_CANDIDATES, BROAD_TOP_K * 2) if broad else RETRIEVE_CANDIDATES
+        candidates = retrieve(query, top_k=cand_k, user=user)
+        ranked = rerank(query, candidates, top_k=keep) if keep else rerank(query, candidates)
         top_score = ranked[0]["score"] if ranked else 0.0
         hits = ranked
         label = f"large-kb ({total} chunks): retrieve + re-rank"
     return hits, top_score, label
  
  
-def _material_lookup(question: str, mode: str, history: list[dict] | None):
+def _material_lookup(question: str, mode: str, history: list[dict] | None,
+                     user: str | None = None):
     """Standalone question first; window rescue only if it doesn't ground.
-    Returns (hits, top_score, mode_label, context, grounded)."""
-    hits, top_score, label = _retrieve(question)
+    Returns (hits, top_score, mode_label, context, grounded, overview)."""
+    # Broad "explain the whole module" ask: a pointed groundedness check can't pass it,
+    # so ground it on the presence of ANY of the student's own material instead.
+    if _is_broad(question):
+        hits, top_score, label = _retrieve(question, user=user, broad=True)
+        context = build_context(hits)
+        return hits, top_score, label, context, bool(hits), True
+
+    hits, top_score, label = _retrieve(question, user=user)
     context = build_context(hits)
-    grounded = False if top_score < HELP_SCORE else _grounded(question, context)
+    grounded = _gate(question, context, top_score)
     if grounded:
-        return hits, top_score, label, context, True
+        return hits, top_score, label, context, True, False
  
     # rescue: a contextless follow-up ('why?') — retry with the conversation window
     if mode == "teach" and history:
         wq = _window_query(question, history)
         if wq != question:
-            h2, s2, l2 = _retrieve(wq)
+            h2, s2, l2 = _retrieve(wq, user=user)
             c2 = build_context(h2)
-            g2 = False if s2 < HELP_SCORE else _grounded(wq, c2)
-            if g2:
-                return h2, s2, l2, c2, True
+            if _gate(wq, c2, s2):
+                return h2, s2, l2, c2, True, False
  
-    return hits, top_score, label, context, False
+    return hits, top_score, label, context, False, False
  
  
 def answer(question: str, mode: str = "quick", history: list[dict] | None = None,
-           web: bool = False) -> dict:
-    hits, top_score, mode_label, context, grounded = _material_lookup(question, mode, history)
+           web: bool = False, user: str | None = None) -> dict:
+    hits, top_score, mode_label, context, grounded, overview = _material_lookup(
+        question, mode, history, user=user)
  
     if not grounded:
         raw = REFUSAL
         decision = "refuse"
+    elif overview:
+        # whole-module tour, synthesised from the student's own passages
+        raw = ask_llm(OVERVIEW_PROMPT,
+                      f"Context passages:\n{context}\n\nRequest: {question}")
+        decision = "refuse" if _is_refusal(raw) else "answer"
     else:
         if mode == "teach":
             messages = [{"role": "system", "content": TEACH_PROMPT}]

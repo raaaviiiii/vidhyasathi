@@ -192,6 +192,15 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .drop .small{font-size:12px;color:var(--t3);margin-top:4px}
 .doclist{margin-top:16px;display:flex;flex-direction:column;gap:8px}
 .doc{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--hair);border-radius:11px;font-size:13.5px}
+.doc .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.docdel{background:none;border:none;color:var(--t3);cursor:pointer;font-size:13px;line-height:1;padding:4px 6px;border-radius:7px;transition:.15s}
+.docdel:hover{background:rgba(201,116,58,.15);color:#d98a55}
+.acctmenu{position:absolute;top:46px;right:0;min-width:190px;background:var(--surface,#1c1712);border:1px solid rgba(217,180,90,.22);border-radius:13px;padding:7px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:50;display:none}
+.acctmenu.show{display:block;animation:rise .18s ease-out both}
+.acctmenu .who{padding:8px 11px 9px;font-size:12px;color:var(--t3);border-bottom:1px solid var(--hair);margin-bottom:5px;word-break:break-all}
+.acctmenu button{display:block;width:100%;text-align:left;background:none;border:none;color:var(--t1,#e8ddc9);font-size:13.5px;padding:9px 11px;border-radius:9px;cursor:pointer}
+.acctmenu button:hover{background:rgba(217,180,90,.1)}
+.acctmenu button.warn:hover{background:rgba(201,116,58,.15);color:#d98a55}
 .doc .nm{flex:1;color:var(--t1);word-break:break-all}
 .doc .sz{color:var(--t3);font-size:12px;white-space:nowrap}
 .trow{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--hair)}
@@ -200,6 +209,9 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .btn{padding:9px 15px;border-radius:11px;border:1px solid var(--hair2);background:none;color:var(--t1);font-size:13px;cursor:pointer;font-family:inherit}
 .btn:hover{background:rgba(217,180,90,.08)}
 .btn.warn{color:#e79178;border-color:rgba(207,81,56,.4)}
+.btn.on{background:rgba(232,162,74,.15);border-color:rgba(232,162,74,.6);color:var(--gold2)}
+.sinput{padding:9px 12px;border-radius:10px;border:1px solid var(--hair2);background:var(--surface,#1c1712);color:var(--t1);font-size:13.5px;font-family:inherit;outline:none}
+.sinput:focus{border-color:rgba(232,162,74,.55)}
 .recent{display:flex;flex-direction:column;gap:6px}
 .recent .r{padding:11px 13px;border:1px solid var(--hair);border-radius:11px;font-size:13.5px;color:var(--t2);cursor:pointer}
 .recent .r:hover{color:var(--t1);border-color:var(--hair2)}
@@ -255,7 +267,8 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
     <div class="bdiv"><i></i><b></b><i></i></div>
     <button class="newchat" onclick="newChat()"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="#2a1a06" stroke-width="2" stroke-linecap="round"/></svg>New chat</button>
     <nav class="nav">
-      <a class="on"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#e8a24a" stroke-width="1.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="#e8a24a" stroke-width="1.2" stroke-linecap="round"/></svg>Recent chats</a>
+      <a class="on"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3.6C3 3.1 3.4 2.8 3.9 2.9L12.3 4.1C12.7 4.2 13 4.5 13 5V11.6C13 12.1 12.6 12.4 12.1 12.3L3.9 11.1V3.6Z" fill="none" stroke="#e8a24a" stroke-width="1.1" stroke-linejoin="round"/><path d="M5.4 6.2h4.8M5.4 8.4h3.4" stroke="#e8a24a" stroke-width="1.1" stroke-linecap="round"/></svg>Current chat</a>
+      <a><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round"/></svg>Recent chats</a>
       <a><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3.4" y="2.4" width="9.2" height="11.2" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5.6 6h4.8M5.6 8.3h4.8M5.6 10.6h3.4" stroke="#d9b45a" stroke-width="1.1"/></svg>My material</a>
       <a><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Practice sets</a>
       <a><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M6 10l-.6 3.6L8 12l2.6 1.6L10 10" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linejoin="round"/></svg>Trust &amp; citations</a>
@@ -268,7 +281,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
     <div class="bgm" id="bgMandala"></div>
     <header class="topbar">
       <div class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Active</span></div>
-      <div class="acct"><div class="av">R<span class="pres"></span></div><span class="nm">Ravi</span>
+      <div class="acct" id="acctChip" onclick="toggleAcct(event)"><div class="av">R<span class="pres"></span></div><span class="nm">Ravi</span>
         <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round"/></svg></div>
     </header>
 
@@ -289,7 +302,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
           <button class="chip" data-mode="teach" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach Me</button>
           <button class="chip" data-mode="exam" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3.2" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M4.8 8 7 10.2l4.4-4.8" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Exam &amp; Practice</button>
           <span class="csep"></span>
-          <div class="toggle" id="webToggle" onclick="this.classList.toggle('on')"><span class="track"><b></b></span>Web fallback</div>
+          <div class="toggle" id="webToggle" onclick="toggleWeb(this)"><span class="track"><b></b></span>Web fallback</div>
         </div>
         <button class="send" onclick="send()"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 16.5V6M6.5 10.5 11 5.8l4.5 4.7" fill="none" stroke="#231604" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
@@ -364,10 +377,11 @@ function enter(){
   document.getElementById('input').focus();
 }
 function auto(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,160)+'px'}
-function setMode(btn){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));btn.classList.add('on');mode=btn.dataset.mode}
-function setModeByName(m){document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.mode===m));mode=m}
+function setMode(btn){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));btn.classList.add('on');mode=btn.dataset.mode;localStorage.setItem('vs_mode',mode)}
+function setModeByName(m){document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.mode===m));mode=m;localStorage.setItem('vs_mode',m)}
+function toggleWeb(el){el.classList.toggle('on');localStorage.setItem('vs_web',el.classList.contains('on')?'1':'0')}
 function starter(t){document.getElementById('input').value=t;auto(document.getElementById('input'));document.getElementById('input').focus()}
-function newChat(){saveCurrentChat();history=[];document.getElementById('transcript').innerHTML='';document.getElementById('transcript').classList.add('hidden');document.getElementById('hero').classList.remove('hidden')}
+function newChat(){saveCurrentChat();history=[];document.getElementById('transcript').innerHTML='';document.getElementById('transcript').classList.add('hidden');document.getElementById('hero').classList.remove('hidden');setActiveNav(0)}
 
 function gild(text){
   // escape then replace [tags] with gilded pills; [web · ...] gets the web style
@@ -422,7 +436,7 @@ async function send(){
   busy=false;
 }
 async function post(path,body){
-  const res=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const res=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,user:USER_EMAIL})});
   if(!res.ok)throw new Error('Backend error ('+res.status+'). Is app.py running?');
   return res.json();
 }
@@ -513,16 +527,21 @@ function setupDrop(){const d=document.getElementById('drop');if(!d)return;
  d.addEventListener('drop',ev=>{ev.preventDefault();d.classList.remove('drag');if(ev.dataTransfer.files[0])doUpload(ev.dataTransfer.files[0])});
 }
 async function listMaterial(){
- try{const r=await fetch(API+'/api/material').then(x=>x.json());const el=document.getElementById('doclist');if(!el)return;
-  if(!r.docs||!r.docs.length){el.innerHTML='<div class="small" style="color:var(--t3)">No documents yet.</div>';return;}
-  el.innerHTML=r.docs.map(d=>`<div class="doc"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="1.5" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3.5" stroke="#d9b45a" stroke-width="1"/></svg><span class="nm">${d.name}</span><span class="sz">${(d.size/1024).toFixed(0)} KB</span></div>`).join('');
+ try{const r=await fetch(API+'/api/material?user='+encodeURIComponent(USER_EMAIL)).then(x=>x.json());const el=document.getElementById('doclist');if(!el)return;
+  if(!r.docs||!r.docs.length){el.innerHTML='<div class="small" style="color:var(--t3)">Nothing yet \u2014 upload your own notes above to get started.</div>';return;}
+  el.innerHTML=r.docs.map(d=>`<div class="doc"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="1.5" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3.5" stroke="#d9b45a" stroke-width="1"/></svg><span class="nm">${esc(d.name)}${d.indexed?'':' <span style="color:var(--warn,#c9743a);font-size:11px">\u00b7 not indexed</span>'}</span><span class="sz">${(d.size/1024).toFixed(0)} KB</span><button class="docdel" title="Remove" onclick="delMaterial('${esc(d.name).replace(/'/g,"\\'")}')">\u2715</button></div>`).join('');
  }catch(e){}
+}
+async function delMaterial(name){
+ if(!confirm('Remove "'+name+'" from your material? This deletes its indexed chunks too.'))return;
+ try{const r=await post('/api/material/delete',{name});toast(r.ok?('Removed '+name):'Could not remove');listMaterial();}
+ catch(e){toast('Remove failed \u2014 is app.py running?')}
 }
 async function doUpload(file){
  if(!file)return; toast('Uploading & indexing '+file.name+'\u2026');
- const fd=new FormData();fd.append('file',file);
+ const fd=new FormData();fd.append('file',file);fd.append('user',USER_EMAIL);
  try{const r=await fetch(API+'/api/upload',{method:'POST',body:fd}).then(x=>x.json());
-  toast(r.indexed?('Indexed '+r.name+' \u2713'):('Saved '+r.name+' \u2014 indexing step needs setup')); listMaterial();
+  toast(r.indexed?('Indexed '+r.name+' \u2713 ('+(r.chunks||0)+' chunks)'):('Saved '+r.name+' \u2014 '+(r.error||'indexing failed'))); listMaterial();
  }catch(e){toast('Upload failed \u2014 is app.py running?')}
 }
 function openTrust(){
@@ -534,12 +553,45 @@ function openTrust(){
  <p><span class="cite web">\ud83c\udf10 web</span> a last-resort web answer, re-expressed in your notes' style and clearly disclosed.</p></div>`);
 }
 function openSettings(){
- openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Settings</h2><div class="sub">Vidhy\u0101sathi runs entirely on your machine.</div>
+ const name=localStorage.getItem('vs_user')||'\u2014';
+ const email=localStorage.getItem('vs_email')||USER_EMAIL||'\u2014';
+ const dm=localStorage.getItem('vs_mode')||'quick';
+ const web=localStorage.getItem('vs_web')==='1';
+ const mbtn=(m,l)=>`<button class="btn${dm===m?' on':''}" onclick="setDefaultMode('${m}')">${l}</button>`;
+ openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Settings</h2><div class="sub">Vidhy\u0101sathi runs entirely on your machine, grounded in your own material.</div>
+ <div class="trow"><span class="k">Signed in as</span><span class="v" style="text-align:right"><b>${esc(name)}</b><br><span style="color:var(--t3);font-size:12px">${esc(email)}</span></span></div>
+ <div class="trow"><span class="k">Default mode</span><span class="v" style="display:flex;gap:6px">${mbtn('quick','Quick')}${mbtn('teach','Teach')}${mbtn('exam','Exam')}</span></div>
+ <div class="trow"><span class="k">Web fallback default</span><span class="v"><button class="btn${web?' on':''}" id="webDefBtn" onclick="toggleWebDefault()">${web?'On':'Off'}</button></span></div>
+ <div class="trow"><span class="k">My material</span><span class="v"><button class="btn" onclick="openMaterial()">Manage\u2026</button></span></div>
  <div class="trow"><span class="k">Model</span><span class="v">llama 3.1 \u00b7 local (Ollama)</span></div>
- <div class="trow"><span class="k">Grounding</span><span class="v">your material only</span></div>
- <div class="trow"><span class="k">Web fallback</span><span class="v">off by default</span></div>
- <div class="trow"><span class="k">Recent chats</span><span class="v"><button class="btn warn" onclick="localStorage.removeItem('vs_chats');toast('Cleared');">Clear all</button></span></div>\n <div class="trow"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>
- <div class="info" style="margin-top:16px">Answers are grounded in your uploaded notes and always show <b>where each line came from</b>. When the material doesn't cover something, it says so instead of guessing.</div>`);
+ <div class="trow"><span class="k">Recent chats</span><span class="v"><button class="btn warn" onclick="localStorage.removeItem('vs_chats');toast('Cleared');">Clear all</button></span></div>
+ <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--gold2);font-size:13.5px">Change password</summary>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+   <input id="pwOld" type="password" placeholder="Current password" class="sinput"/>
+   <input id="pwNew" type="password" placeholder="New password" class="sinput"/>
+   <button class="btn" onclick="doChangePassword()">Update password</button>
+   <div id="pwMsg" class="small" style="color:var(--t3)"></div></div></details>
+ <details style="margin-top:8px"><summary style="cursor:pointer;color:#d98a55;font-size:13.5px">Delete account</summary>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+   <div class="small" style="color:var(--t3)">Permanently removes your account, uploaded files, and all indexed material.</div>
+   <input id="delPw" type="password" placeholder="Confirm password" class="sinput"/>
+   <button class="btn warn" onclick="doDeleteAccount()">Delete my account</button>
+   <div id="delMsg" class="small" style="color:var(--t3)"></div></div></details>
+ <div class="trow" style="margin-top:8px"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>`);
+}
+function setDefaultMode(m){localStorage.setItem('vs_mode',m);setModeByName(m);openSettings();}
+function toggleWebDefault(){const on=localStorage.getItem('vs_web')!=='1';localStorage.setItem('vs_web',on?'1':'0');
+ const wt=document.getElementById('webToggle');if(wt)wt.classList.toggle('on',on);openSettings();}
+async function doChangePassword(){const o=document.getElementById('pwOld').value,n=document.getElementById('pwNew').value,msg=document.getElementById('pwMsg');
+ if(!o||!n){msg.textContent='Fill both fields.';return;}msg.textContent='Updating\u2026';
+ try{const r=await fetch(API+'/api/account/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:USER_EMAIL,old_password:o,new_password:n})}).then(x=>x.json());
+  msg.textContent=r.ok?'Password updated \u2713':(r.error||'Failed');msg.style.color=r.ok?'#7bb08a':'#d98a55';}catch(e){msg.textContent='Server not reachable.';}
+}
+async function doDeleteAccount(){const pw=document.getElementById('delPw').value,msg=document.getElementById('delMsg');
+ if(!pw){msg.textContent='Enter your password to confirm.';return;}
+ if(!confirm('Delete your account and all your material? This cannot be undone.'))return;msg.textContent='Deleting\u2026';
+ try{const r=await fetch(API+'/api/account/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:USER_EMAIL,password:pw})}).then(x=>x.json());
+  if(r.ok){signOut();}else{msg.textContent=r.error||'Failed';msg.style.color='#d98a55';}}catch(e){msg.textContent='Server not reachable.';}
 }
 function openRecent(){
  const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');
@@ -547,19 +599,37 @@ function openRecent(){
  openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Recent chats</h2><div class="sub">Saved in this browser.</div><div class="recent">${list}</div>`);
 }
 function restoreChat(i){const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');const c=chats[i];if(!c)return;
- document.getElementById('hero').classList.add('hidden');const t=document.getElementById('transcript');t.classList.remove('hidden');t.innerHTML=c.html;history=c.history||[];closeModal();typeset(t);scrollDown();}
+ document.getElementById('hero').classList.add('hidden');const t=document.getElementById('transcript');t.classList.remove('hidden');t.innerHTML=c.html;history=c.history||[];closeModal();setActiveNav(0);typeset(t);scrollDown();}
 function saveCurrentChat(){const t=document.getElementById('transcript');if(t.classList.contains('hidden')||!t.innerHTML.trim())return;
  const f=t.querySelector('.msg.user .bubble');const title=f?f.textContent.slice(0,48):'Chat';
  const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');chats.unshift({title,time:Date.now(),html:t.innerHTML,history});
  localStorage.setItem('vs_chats',JSON.stringify(chats.slice(0,20)));}
+function setActiveNav(i){document.querySelectorAll('.nav a').forEach((a,j)=>a.classList.toggle('on',j===i));}
+function showCurrent(){const t=document.getElementById('transcript');const h=document.getElementById('hero');
+ if(t.innerHTML.trim()){h.classList.add('hidden');t.classList.remove('hidden');}else{h.classList.remove('hidden');t.classList.add('hidden');}
+ setActiveNav(0);closeModal();scrollDown();}
 function attachNav(){const nav=document.querySelectorAll('.nav a');
- if(nav[0])nav[0].onclick=openRecent;
- if(nav[1])nav[1].onclick=openMaterial;
- if(nav[2])nav[2].onclick=()=>{setModeByName('exam');toast('Exam mode \u2014 type a topic to generate a practice set');};
- if(nav[3])nav[3].onclick=openTrust;
+ if(nav[0])nav[0].onclick=showCurrent;
+ if(nav[1])nav[1].onclick=openRecent;
+ if(nav[2])nav[2].onclick=openMaterial;
+ if(nav[3])nav[3].onclick=()=>{setModeByName('exam');showCurrent();toast('Exam mode \u2014 type a topic to generate a practice set');};
+ if(nav[4])nav[4].onclick=openTrust;
  const ft=document.querySelector('.footer');if(ft)ft.onclick=openSettings;
  window.addEventListener('beforeunload',saveCurrentChat);
+ buildAcctMenu();
+ document.addEventListener('click',e=>{const m=document.getElementById('acctMenu');const c=document.getElementById('acctChip');
+  if(m&&c&&!c.contains(e.target)&&!m.contains(e.target))m.classList.remove('show');});
 }
+function buildAcctMenu(){const chip=document.getElementById('acctChip');if(!chip)return;
+ chip.style.position='relative';
+ let m=document.getElementById('acctMenu');if(!m){m=document.createElement('div');m.id='acctMenu';m.className='acctmenu';m.onclick=e=>e.stopPropagation();chip.appendChild(m);}
+ const email=localStorage.getItem('vs_email')||USER_EMAIL||'signed in';
+ m.innerHTML=`<div class="who">${esc(email)}</div>
+  <button onclick="openSettings();document.getElementById('acctMenu').classList.remove('show')">Settings</button>
+  <button onclick="openMaterial();document.getElementById('acctMenu').classList.remove('show')">My material</button>
+  <button class="warn" onclick="signOut()">Sign out</button>`;
+}
+function toggleAcct(e){e.stopPropagation();const m=document.getElementById('acctMenu');if(m)m.classList.toggle('show');}
 
 /* ---------- auth ---------- */
 let authMode='signup';
@@ -569,12 +639,19 @@ function toggleAuth(){authMode=authMode==='signup'?'login':'signup';
  document.getElementById('authToggle').innerHTML=authMode==='signup'?'Already have an account?  <b onclick="toggleAuth()">Sign in</b>':'New here?  <b onclick="toggleAuth()">Create an account</b>';
  document.getElementById('authErr').style.display='none';}
 function esc(s){return (s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
-function applyUser(name){localStorage.setItem('vs_user',name);
+let USER_EMAIL='';
+function applyUser(name,email){localStorage.setItem('vs_user',name);
+ if(email){USER_EMAIL=email;localStorage.setItem('vs_email',email);}
  const first=(name.trim().split(/\s+/)[0])||name;
  const h1=document.querySelector('.hero h1'); if(h1)h1.innerHTML='<span class="sk">\u0928\u092e\u0938\u094d\u0924\u0947,</span> '+esc(first);
  const av=document.querySelector('.acct .av'); if(av)av.childNodes[0].nodeValue=(name.trim()[0]||'?').toUpperCase();
- const nm=document.querySelector('.acct .nm'); if(nm)nm.textContent=first;}
-function signOut(){localStorage.removeItem('vs_user');localStorage.removeItem('vs_chats');location.reload();}
+ const nm=document.querySelector('.acct .nm'); if(nm)nm.textContent=first;
+ buildAcctMenu();}
+function applyPrefs(){
+ const m=localStorage.getItem('vs_mode'); if(m)setModeByName(m);
+ const w=localStorage.getItem('vs_web'); const wt=document.getElementById('webToggle');
+ if(wt&&w==='1')wt.classList.add('on');}
+function signOut(){localStorage.removeItem('vs_user');localStorage.removeItem('vs_email');localStorage.removeItem('vs_chats');location.reload();}
 async function doAuth(){
  const name=(document.getElementById('anName').value||'').trim();
  const email=(document.getElementById('anEmail').value||'').trim();
@@ -585,12 +662,13 @@ async function doAuth(){
   const body=authMode==='signup'?{name,email,password:pass}:{email,password:pass};
   const r=await fetch(API+(authMode==='signup'?'/api/signup':'/api/login'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
   if(!r.ok){err.textContent=r.error||'Something went wrong.';err.style.display='block';return;}
-  applyUser(r.name); enter();
+  applyUser(r.name, r.email||email); enter(); applyPrefs();
  }catch(e){err.textContent='Server not reachable \u2014 is app.py running?';err.style.display='block';}
 }
 
 attachNav();
-const _u=localStorage.getItem('vs_user'); if(_u){applyUser(_u);enter();}
+const _u=localStorage.getItem('vs_user'); const _e=localStorage.getItem('vs_email');
+if(_u){applyUser(_u,_e||'');enter();applyPrefs();setActiveNav(0);}
 </script>
 </body>
 </html>

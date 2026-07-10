@@ -9,3 +9,6 @@ pymupdf
 anthropic
 python-dotenv
 pillow
+fastapi
+uvicorn
+python-multipart

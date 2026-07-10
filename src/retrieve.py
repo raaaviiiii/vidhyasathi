@@ -3,18 +3,20 @@ Limit capped at KB size (adaptive to document size).
 """
 from src.config import COLLECTION_NAME, RETRIEVE_CANDIDATES
 from src.embed import embed_query
-from src.store import get_client, count
+from src.store import get_client, count, user_filter
 
 
-def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES) -> list[dict]:
+def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES,
+             user: str | None = None) -> list[dict]:
     client = get_client()
-    total = count()
+    total = count(user)
     limit = min(top_k, total) if total else top_k
 
     qvec = embed_query(question)
     hits = client.query_points(
         collection_name=COLLECTION_NAME,
         query=qvec,
+        query_filter=user_filter(user),
         limit=limit,
         with_payload=True,
     ).points

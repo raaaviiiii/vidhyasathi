@@ -10,7 +10,7 @@ Run:  python -m src.exam "the Division Algorithm"        (default 5 questions)
       python -m src.exam "the Division Algorithm" 3      (choose how many)
 """
 import re
-from src.answer import _retrieve, _grounded, build_context, ask_llm, REFUSAL
+from src.answer import _retrieve, _gate, build_context, ask_llm, REFUSAL
 from src.config import HELP_SCORE
  
 GEN_PROMPT = (
@@ -59,11 +59,11 @@ def _parse_qa(text: str) -> list[dict]:
     return items
  
  
-def generate(topic: str, n: int = 5) -> dict:
-    hits, top_score, mode_label = _retrieve(topic)
+def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
+    hits, top_score, mode_label = _retrieve(topic, user=user)
     hits = hits[:TOP_K_GEN]                    # focus on the most on-topic chunks
     context = build_context(hits)
-    grounded = False if top_score < HELP_SCORE else _grounded(topic, context)
+    grounded = _gate(topic, context, top_score)
  
     sources = []
     for h in hits:

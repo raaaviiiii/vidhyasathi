@@ -14,7 +14,7 @@ Run:  python -m src.grade "State the Division Algorithm"
       python -m src.grade "State the Division Algorithm" "a = bq + r where 0<=r<b"
       (or pass the answer as the second argument)
 """
-from src.answer import _retrieve, _grounded, build_context, ask_llm, REFUSAL
+from src.answer import _retrieve, _gate, build_context, ask_llm, REFUSAL
 from src.config import HELP_SCORE
  
 TOP_K_GRADE = 6
@@ -49,11 +49,11 @@ GRADE_PROMPT = (
 )
  
  
-def grade(question: str, student_answer: str) -> dict:
-    hits, top_score, mode_label = _retrieve(question)
+def grade(question: str, student_answer: str, user: str | None = None) -> dict:
+    hits, top_score, mode_label = _retrieve(question, user=user)
     hits = hits[:TOP_K_GRADE]
     context = build_context(hits)
-    grounded = False if top_score < HELP_SCORE else _grounded(question, context)
+    grounded = _gate(question, context, top_score)
  
     sources = []
     for h in hits:

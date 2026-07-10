@@ -29,6 +29,13 @@ LLM_MODEL = "llama3.1:8b"
 MIN_RETRIEVAL_SCORE = 0.35
 ANSWER_SCORE = 0.45   # >= this: confident -> answer directly
 HELP_SCORE   = 0.30   # >= this but < ANSWER_SCORE: answer + offer "ask a human"; below this: honest refuse
+STRONG_SKIP_SCORE = 0.55  # >= this cosine: trust retrieval, SKIP the LLM groundedness check (halves latency on confident hits)
+
+# --- broad / overview questions ("explain all the concepts in the module") ---
+BROAD_TOP_K = 12      # overview questions synthesize from more chunks than a pointed one
+
+# --- per-user uploads (web app): data/uploads/<user_hash>/<file> ---
+UPLOADS_DIR = DATA_DIR / "uploads"
 
 # --- re-ranking ---
 RETRIEVE_CANDIDATES = 15
