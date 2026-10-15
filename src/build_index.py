@@ -1,40 +1,77 @@
-"""Build (or rebuild) the whole knowledge base from every supported document
-in data/docs/ (pdf, docx, pptx, txt, md, csv, xlsx). Single entry point.
+"""Indexing entry points.
 
-Two paths:
-  build(owner=None)        — full rebuild from data/docs/ (CLI seeding).
-  ingest_file(path, user)  — add/replace ONE file for ONE user, in-process, no reset.
-                             This is what the web upload endpoint calls (same Qdrant
-                             client as the running server, so no embedded-lock clash).
+  ingest_file(path, user)  — add/replace ONE file for ONE student (the web upload path).
+                             Identity is the exact file name, so notes.pdf and notes.docx
+                             are two documents. The new version is written first and the
+                             old one removed only after that succeeds.
+  build(owner=None)        — (re)seed one bucket from every document in data/docs/.
+                             Only that bucket is replaced; other students are untouched.
+
+CLI:  python -m src.build_index                 # seed the shared bucket
+      python -m src.build_index --owner a@x.com  # seed one student's bucket
 """
+import uuid
 from pathlib import Path
 
 from src.ingest import (list_documents, load_document, source_label,
                         unsupported_files, SUPPORTED)
 from src.chunk import chunk_records
 from src.embed import embed_texts
-from src.store import (reset_collection, upsert_chunks, count, close,
-                       delete_source)
+from src.errors import IngestError
+from src.store import upsert_chunks, count, close, delete_bucket, _delete, user_filter
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 
-def ingest_file(path, user: str | None = None) -> dict:
-    """Index a single already-saved file for `user`, replacing any prior copy.
-    Returns {ok, source, chunks, ocr}. Does NOT close the shared client."""
+def _drop_other_versions(user, doc, keep_ver):
+    from src.store import _user_cond, _doc_cond
+    _delete(Filter(must=[_user_cond(user), _doc_cond(doc)],
+                   must_not=[FieldCondition(key="ver", match=MatchValue(value=keep_ver))]))
+
+
+def _drop_version(user, doc, ver):
+    from src.store import _doc_cond
+    try:
+        _delete(user_filter(user, _doc_cond(doc),
+                            FieldCondition(key="ver", match=MatchValue(value=ver))))
+    except Exception:
+        pass
+
+
+def ingest_file(path, user: str | None = None, doc: str | None = None) -> dict:
+    """Index one saved file for `user`, replacing any previous copy of the same file.
+
+    Returns {ok, doc, source, chunks, ocr, warnings[, error]}. A file that can't be
+    read returns ok=False with a message safe to show the student. Storage failures
+    (e.g. Qdrant down) raise, and leave the previous version intact."""
     path = Path(path)
+    doc = doc or path.name
+    src = source_label(Path(doc))            # citations use the real name, not a temp file
+    base = {"doc": doc, "source": src, "chunks": 0, "ocr": 0, "warnings": []}
     if path.suffix.lower() not in SUPPORTED:
-        return {"ok": False, "source": path.name, "chunks": 0,
-                "error": f"unsupported file type: {path.suffix}"}
-    src = source_label(path)
-    recs = load_document(path)
+        return {**base, "ok": False,
+                "error": f"That file type isn't supported (unsupported file type: {path.suffix or 'none'})."}
+    warnings: list[str] = []
+    try:
+        recs = load_document(path, warnings)
+    except IngestError as e:
+        return {**base, "ok": False, "error": str(e), "warnings": warnings}
     chunks = chunk_records(recs, source=src)
     if not chunks:
-        return {"ok": False, "source": src, "chunks": 0,
-                "error": "no extractable text (empty or unreadable file)"}
+        msg = "This file has no extractable text (it may be empty or image-only)."
+        if warnings:
+            msg += " " + " ".join(warnings)
+        return {**base, "ok": False, "error": msg, "warnings": warnings}
+
     vectors = embed_texts([c["text"] for c in chunks])
-    delete_source(user, src)                 # idempotent: re-upload overwrites
-    upsert_chunks(chunks, vectors, user=user)
+    ver = uuid.uuid4().hex
+    try:
+        upsert_chunks(chunks, vectors, user=user, doc=doc, ver=ver)
+    except Exception:
+        _drop_version(user, doc, ver)        # no half-written version left behind
+        raise
+    _drop_other_versions(user, doc, ver)     # only now retire the old copy
     n_ocr = sum(1 for c in chunks if c.get("ocr"))
-    return {"ok": True, "source": src, "chunks": len(chunks), "ocr": n_ocr}
+    return {**base, "ok": True, "chunks": len(chunks), "ocr": n_ocr, "warnings": warnings}
 
 
 def build(owner: str | None = None):
@@ -44,35 +81,42 @@ def build(owner: str | None = None):
         return
 
     print(f"Found {len(docs)} document(s):")
-    all_chunks = []
+    per_doc = []
     for path in docs:
         src = source_label(path)
-        recs = load_document(path)
+        warnings: list[str] = []
+        try:
+            recs = load_document(path, warnings)
+        except IngestError as e:
+            print(f"  - {path.name}: SKIPPED ({e})")
+            continue
         chunks = chunk_records(recs, source=src)
-        all_chunks.extend(chunks)
-        print(f"  - {src} ({path.suffix}): {len(recs)} records -> {len(chunks)} chunks")
+        per_doc.append((path.name, chunks))
+        note = f"  [{'; '.join(warnings)}]" if warnings else ""
+        print(f"  - {src} ({path.suffix}): {len(recs)} records -> {len(chunks)} chunks{note}")
 
     skipped = unsupported_files()
     if skipped:
-        print("skipped (unsupported for now):",
-              ", ".join(p.name for p in skipped))
+        print("skipped (unsupported for now):", ", ".join(p.name for p in skipped))
 
-    print(f"\nTotal chunks: {len(all_chunks)}")
+    total = sum(len(c) for _, c in per_doc)
+    print(f"\nTotal chunks: {total}")
     print("Embedding all chunks ...")
-    vectors = embed_texts([c["text"] for c in all_chunks])
-
-    reset_collection()
-    upsert_chunks(all_chunks, vectors, user=owner)
-    who = f" (owner: {owner})" if owner else " (shared / untagged)"
-    print(f"Stored {count(owner)} chunks from {len(docs)} document(s) in the KB{who}.")
+    delete_bucket(owner)                       # replace ONLY this bucket
+    ver = uuid.uuid4().hex
+    for name, chunks in per_doc:
+        if chunks:
+            vectors = embed_texts([c["text"] for c in chunks])
+            upsert_chunks(chunks, vectors, user=owner, doc=name, ver=ver)
+    who = f" (owner: {owner})" if owner else " (shared bucket)"
+    print(f"Stored {count(owner)} chunks from {len(per_doc)} document(s) in the KB{who}.")
     close()
 
 
 if __name__ == "__main__":
     import sys
-    # optional: python -m src.build_index --owner you@example.com
     owner = None
     if "--owner" in sys.argv:
         i = sys.argv.index("--owner")
-        owner = sys.argv[i + 1] if i + 1 < len(sys.argv) else None
+        owner = sys.argv[i + 1].strip().lower() if i + 1 < len(sys.argv) else None
     build(owner=owner)

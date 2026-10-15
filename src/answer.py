@@ -27,9 +27,10 @@ import re
 import ollama
 from src.config import (LLM_MODEL, ANSWER_SCORE, HELP_SCORE, SMALL_KB_MAX,
                         STRONG_SKIP_SCORE, BROAD_TOP_K, RETRIEVE_CANDIDATES)
+from src.errors import LLMUnavailable
 from src.retrieve import retrieve
 from src.rerank import rerank
-from src.store import count
+from src.store import count, user_sources
 from src.websearch import web_context
  
 REFUSAL = "I don't have that in the material."
@@ -91,20 +92,68 @@ OVERVIEW_PROMPT = (
     "\"I don't have that in the material.\""
 )
 
-# Broad-intent triggers: an overview verb sitting next to a whole-scope word.
+# Broad-intent triggers: phrases that ask for an OVERVIEW. Scope words on their own
+# ("the module", "my notes") do NOT make a question broad — "Explain Kruskal's
+# algorithm from the module" is a pointed question.
 _BROAD_PHRASES = (
     "all the concept", "all concepts", "every concept", "all the topic", "all topics",
-    "main concept", "key concept", "main topic", "key topic", "main idea", "key idea",
-    "entire module", "whole module", "the module", "this module", "entire chapter",
-    "whole chapter", "the syllabus", "everything in", "everything about", "overview of",
-    "summarize", "summarise", "summary of", "outline of", "go over everything",
-    "what does this cover", "what is covered", "what do my notes cover",
+    "all the idea", "main concept", "key concept", "main topic", "key topic", "main idea",
+    "key idea", "explain concepts", "explain the concepts", "concepts in", "concepts of",
+    "topics in", "everything in", "everything about", "explain everything",
+    "overview of", "an overview", "summarize", "summarise", "summary of", "a summary",
+    "outline of", "go over everything", "what does this cover", "what is covered",
+    "what do my notes cover", "what does my material cover",
 )
+
+_WORD = re.compile(r"[^\W_]+", re.UNICODE)
+_STOP = {
+    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "from", "about",
+    "is", "are", "was", "be", "it", "its", "this", "that", "these", "those", "what",
+    "which", "how", "why", "me", "my", "i", "you", "your", "do", "does", "can", "please",
+    "give", "tell", "explain", "describe", "list", "all", "every", "everything", "main",
+    "key", "important", "whole", "entire", "briefly", "go", "over", "s",
+}
+# words that only name the scope or the request, never a topic
+_SCOPE = {
+    "module", "modules", "chapter", "chapters", "unit", "units", "note", "notes",
+    "material", "materials", "syllabus", "document", "documents", "doc", "docs", "file",
+    "files", "pdf", "pptx", "ppt", "docx", "slide", "slides", "lecture", "lectures",
+    "concept", "concepts", "topic", "topics", "idea", "ideas", "summarize", "summarise",
+    "summary", "overview", "outline", "cover", "covers", "covered", "covering",
+    "presentation", "deck", "point", "points",
+}
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in _WORD.findall((text or "").lower()) if len(w) > 1]
 
 
 def _is_broad(question: str) -> bool:
     q = question.lower()
     return any(p in q for p in _BROAD_PHRASES)
+
+
+def _broad_topic(question: str) -> str:
+    """What's left of a broad ask once scope/request words are removed: '' for
+    'explain all the concepts in my notes', 'quantum mechanics' for 'summarise
+    quantum mechanics'."""
+    return " ".join(w for w in _words(question)
+                    if w not in _STOP and w not in _SCOPE and not w.isdigit())
+
+
+def _match_document(topic: str, user: str | None) -> str | None:
+    """If the leftover topic names one of the student's documents ("the introduction
+    pptx"), return that document's citation label so the overview covers it."""
+    tw = set(topic.split())
+    if not tw:
+        return None
+    best = None
+    for label in user_sources(user):
+        lw = set(_words(label)) - _STOP
+        if lw and tw <= lw:                 # every topic word is in the doc's name
+            if best is None or len(lw) < len(set(_words(best))):
+                best = label
+    return best
 
 
 # --- Layer 3: web-grounded, but re-expressed in the student's note style ------
@@ -128,11 +177,13 @@ _MATH_RE = re.compile(
     r"\$\$[^$]+\$\$"
     r"|(?<![<>=!])=(?!=)"
     r"|\\(?:frac|sqrt|sum|int|prod|binom|cdot|times|div|pmod|bmod|equiv|leq|geq|neq)\b"
-    r"|\b\d+\s*[+\-*/]\s*\d+"
+    r"|\b\d+\s+[+\-*/]\s+\d+\b"
     r"|[\u2264\u2265\u230a\u230b\u2211\u222b\u221a\u220f\u2260\u00b1\u00d7\u00f7]"
 )
  
-_NON_WEB_TAG = re.compile(r"\[(?!web\b)[^\]]*\]")
+# A citation tag always has the "source · locator" shape; ordinary brackets such as
+# an interval [0, b-1] don't, and must survive the scrub.
+_NON_WEB_TAG = re.compile(r"\[(?!web\s*\u00b7)[^\]\n]*\u00b7[^\]\n]*\]")
  
  
 def _has_math(t: str) -> bool:
@@ -164,9 +215,33 @@ def chat_llm(messages: list[dict]) -> str:
     return resp["message"]["content"].strip()
  
  
+def call_llm(messages: list[dict]) -> str:
+    """Every model call goes through here, so an Ollama outage surfaces as one clear
+    LLMUnavailable error instead of a raw stack trace."""
+    try:
+        return chat_llm(messages)
+    except LLMUnavailable:
+        raise
+    except Exception as e:
+        raise LLMUnavailable(str(e)) from e
+
+
 def ask_llm(system: str, user: str) -> str:
-    return chat_llm([{"role": "system", "content": system},
+    return call_llm([{"role": "system", "content": system},
                      {"role": "user", "content": user}])
+
+
+def _clean_history(history) -> list[dict]:
+    """Client-supplied chat history: only user/assistant turns with text survive (a
+    forged 'system' turn could override the grounding rules). Last 20 turns."""
+    out = []
+    for m in history or []:
+        if not isinstance(m, dict):
+            continue
+        role, content = m.get("role"), m.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+            out.append({"role": role, "content": content[:4000]})
+    return out[-20:]
  
  
 def _grounded(query: str, context: str) -> bool:
@@ -190,6 +265,13 @@ def _gate(query: str, context: str, top_score: float) -> bool:
     return _grounded(query, context)
  
  
+def _cited_hits(text: str, hits: list[dict]) -> list[dict]:
+    """The hits an answer actually cites ([source · loc] tags). If it cites nothing
+    recognisable, fall back to the top three hits."""
+    cited = [h for h in hits if f"[{h['source']} \u00b7 {h['loc']}]" in (text or "")]
+    return cited or hits[:3]
+
+
 def build_context(hits: list[dict]) -> str:
     return "\n\n".join(f"[{h['source']} \u00b7 {h['loc']}] {h['text']}" for h in hits)
  
@@ -201,61 +283,88 @@ def _doc_order(chunks: list[dict]) -> list[dict]:
 def _window_query(question: str, history: list[dict] | None) -> str:
     """Fold in the last user turn so contextless follow-ups still retrieve on the
     current topic. Used ONLY as a rescue when the standalone question fails to ground."""
-    prior_user = [m["content"] for m in (history or []) if m.get("role") == "user"]
+    prior_user = [m["content"] for m in _clean_history(history) if m["role"] == "user"]
     window = prior_user[-1:] + [question]
     return " ".join(window)
  
  
-def _retrieve(query: str, user: str | None = None, broad: bool = False):
-    """Return (hits, top_score, mode_label) for a query, scoped to `user` if given.
-    `broad=True` widens the pool and keeps more chunks, for whole-module overviews."""
+def _retrieve(query: str, user: str | None = None, broad: bool = False,
+              source: str | None = None):
+    """Return (hits, top_score, mode_label) for a query, scoped to `user` (and to one
+    document's label when `source` is given). `broad=True` widens the pool and keeps
+    more chunks, for overviews. top_score is the best cosine among the kept hits —
+    the gate's bands are defined on cosine, not on the re-ranker's order."""
     total = count(user)
     small = 0 < total <= SMALL_KB_MAX
     keep = BROAD_TOP_K if broad else None          # None -> rerank's default TOP_K
     if small:
-        candidates = retrieve(query, top_k=total, user=user)
+        candidates = retrieve(query, top_k=total, user=user, source=source)
         top_score = max((c["score"] for c in candidates), default=0.0)
         hits = _doc_order(candidates)
         label = f"small-kb ({total} chunks): full context"
     else:
         cand_k = max(RETRIEVE_CANDIDATES, BROAD_TOP_K * 2) if broad else RETRIEVE_CANDIDATES
-        candidates = retrieve(query, top_k=cand_k, user=user)
+        candidates = retrieve(query, top_k=cand_k, user=user, source=source)
         ranked = rerank(query, candidates, top_k=keep) if keep else rerank(query, candidates)
-        top_score = ranked[0]["score"] if ranked else 0.0
+        top_score = max((c["score"] for c in ranked), default=0.0)
         hits = ranked
         label = f"large-kb ({total} chunks): retrieve + re-rank"
     return hits, top_score, label
  
  
+# Words that make a follow-up refer back to the previous turn rather than name a
+# new topic ("why?", "give me an example", "explain that again").
+_FOLLOWUP = {
+    "why", "how", "what", "example", "examples", "more", "again", "simpler", "simply",
+    "mean", "means", "meaning", "work", "works", "working", "elaborate", "detail",
+    "details", "clarify", "understand", "dont", "don", "get", "next", "continue",
+    "another", "step", "steps", "show", "prove", "proof", "they", "them", "then", "so",
+    "okay", "ok", "yes", "no", "sure", "and", "but", "also", "else", "other", "same",
+    "one", "case", "cases", "use", "used", "happens", "happen", "part", "bit", "lot",
+}
+
+
+def _new_topic_words(question: str) -> set[str]:
+    return {w for w in _words(question) if w not in _STOP and w not in _FOLLOWUP}
+
+
 def _material_lookup(question: str, mode: str, history: list[dict] | None,
                      user: str | None = None):
     """Standalone question first; window rescue only if it doesn't ground.
     Returns (hits, top_score, mode_label, context, grounded, overview)."""
-    # Broad "explain the whole module" ask: a pointed groundedness check can't pass it,
-    # so ground it on the presence of ANY of the student's own material instead.
     if _is_broad(question):
-        hits, top_score, label = _retrieve(question, user=user, broad=True)
+        topic = _broad_topic(question)
+        doc = _match_document(topic, user) if topic else None
+        if not topic or doc:
+            # whole material (or one named document): grounded iff there is material
+            hits, top_score, label = _retrieve(question, user=user, broad=True, source=doc)
+            return hits, top_score, label, build_context(hits), bool(hits), True
+        # a broad ask ABOUT a topic ("summarise quantum mechanics"): the topic itself
+        # has to be in the material, exactly like a pointed question
+        hits, top_score, label = _retrieve(topic, user=user, broad=True)
         context = build_context(hits)
-        return hits, top_score, label, context, bool(hits), True
+        return hits, top_score, label, context, _gate(topic, context, top_score), True
 
     hits, top_score, label = _retrieve(question, user=user)
     context = build_context(hits)
-    grounded = _gate(question, context, top_score)
-    if grounded:
+    if _gate(question, context, top_score):
         return hits, top_score, label, context, True, False
- 
-    # rescue: a contextless follow-up ('why?') — retry with the conversation window
-    if mode == "teach" and history:
+
+    # rescue: a contextless follow-up ('why?') — retry with the conversation window,
+    # but only if the question doesn't introduce a NEW topic the material lacks
+    if mode == "teach" and _clean_history(history):
         wq = _window_query(question, history)
         if wq != question:
             h2, s2, l2 = _retrieve(wq, user=user)
             c2 = build_context(h2)
-            if _gate(wq, c2, s2):
+            ctx_low = c2.lower()
+            new = _new_topic_words(question)
+            if all(w in ctx_low for w in new) and _gate(wq, c2, s2):
                 return h2, s2, l2, c2, True, False
- 
+
     return hits, top_score, label, context, False, False
- 
- 
+
+
 def answer(question: str, mode: str = "quick", history: list[dict] | None = None,
            web: bool = False, user: str | None = None) -> dict:
     hits, top_score, mode_label, context, grounded, overview = _material_lookup(
@@ -272,10 +381,10 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
     else:
         if mode == "teach":
             messages = [{"role": "system", "content": TEACH_PROMPT}]
-            messages += (history or [])
+            messages += _clean_history(history)
             messages.append({"role": "user",
                              "content": f"Context passages:\n{context}\n\nStudent: {question}"})
-            raw = chat_llm(messages)
+            raw = call_llm(messages)
         else:
             raw = ask_llm(SYSTEM_PROMPT, f"Context passages:\n{context}\n\nQuestion: {question}")
         if _is_refusal(raw):
@@ -294,7 +403,7 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
         if passages:
             wctx = build_context(passages)
             style_ref = _style_exemplars(hits)
-            web_raw = chat_llm([
+            web_raw = call_llm([
                 {"role": "system", "content": WEB_PROMPT},
                 {"role": "user", "content":
                     f"WEB passages (the only facts you may use):\n{wctx}\n\n"
@@ -313,7 +422,7 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
  
     # OCR nudge applies ONLY to answers drawn from the student's OCR'd material —
     # never to a web answer (its text isn't from a scanned source) or a refusal.
-    ocr_used = any(h.get("ocr") for h in hits)
+    ocr_used = any(h.get("ocr") for h in _cited_hits(shown, hits))
     caveat = ("\u21b3 This draws on a handwritten/scanned source \u2014 worth "
               "double-checking the equation.") if (
         decision in ("answer", "answer_uncertain") and ocr_used and _has_math(shown)) else ""
@@ -330,8 +439,10 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
         "top_score": top_score,
         "weak": decision != "answer",
         "mode": mode_label,
-        "sources": [{"source": h["source"], "loc": h["loc"],
-                     "score": h["score"], "ocr": h["ocr"]} for h in hits],
+        "sources": ([{"source": w["source"], "loc": "", "url": w["url"], "score": None,
+                      "ocr": False} for w in web_sources] if web_used else
+                    [{"source": h["source"], "loc": h["loc"],
+                      "score": h["score"], "ocr": h["ocr"]} for h in hits]),
     }
  
  

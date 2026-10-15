@@ -30,36 +30,51 @@ GEN_PROMPT = (
  
 TOP_K_GEN = 6   # focus generation on the most-relevant chunks to curb topic drift
  
-_QA_RE = re.compile(r"(?is)Q\d*\s*[:.\)]\s*(.+?)\s*A\d*\s*[:.\)]\s*(.+)")
-_SPLIT_DASH = re.compile(r"(?m)^\s*-{3,}\s*$")
-_SPLIT_Q = re.compile(r"(?im)^\s*(?=Q\d*\s*[:.\)])")
- 
- 
+MAX_N = 20      # practice sets are capped; a bigger ask is clamped, not refused
+
+# Line-anchored markers only, so "formula." or "part (a)" inside a question can
+# never be mistaken for the start of an answer.
+_Q_MARK = re.compile(r"^\s*(?:\d+\s*[.)]\s*)?(?:Q(?:uestion)?)\s*\d*\s*[:.)\-]\s*(.*)$", re.I)
+_A_MARK = re.compile(r"^\s*(?:A(?:nswer)?)\s*\d*\s*[:)\-]\s*(.*)$|^\s*Answer\s*\d*\s*\.\s*(.*)$", re.I)
+_DELIM = re.compile(r"^\s*-{3,}\s*$")
+_TAG = re.compile(r"\[[^\]\n]+\]")
+
+
 def _parse_qa(text: str) -> list[dict]:
-    """Parse the model's Q/A output into [{'q','a'}]. Tolerant of numbering,
-    markdown, and a missing/irregular delimiter."""
-    # strip markdown emphasis / heading markers that can hide the Q/A anchors
-    text = re.sub(r"[*`]", "", text)
-    text = re.sub(r"(?m)^\s*[#>]+\s*", "", text)
- 
-    def _from_blocks(blocks):
-        out = []
-        for b in blocks:
-            b = b.strip()
-            if not b:
-                continue
-            m = _QA_RE.search(b)
-            if m:
-                out.append({"q": m.group(1).strip(), "a": m.group(2).strip()})
-        return out
- 
-    items = _from_blocks(_SPLIT_DASH.split(text))
-    if len(items) <= 1:                       # model ignored the --- delimiter
-        items = _from_blocks(_SPLIT_Q.split(text)) or items
+    """Parse the model's Q/A output into [{'q','a'}]. Tolerant of numbering
+    ("1. Q:"), "Question/Answer" wording, markdown and missing delimiters."""
+    text = re.sub(r"[*`]", "", text or "")
+    items, cur, field = [], None, None
+    for raw in text.splitlines():
+        line = re.sub(r"^\s*[#>]+\s*", "", raw)
+        if _DELIM.match(line):
+            continue
+        mq = _Q_MARK.match(line)
+        ma = None if mq else _A_MARK.match(line)
+        if mq:
+            if cur and cur["q"] and cur["a"]:
+                items.append(cur)
+            cur, field = {"q": mq.group(1).strip(), "a": ""}, "q"
+        elif ma and cur is not None:
+            cur["a"] = (ma.group(1) or ma.group(2) or "").strip()
+            field = "a"
+        elif cur is not None and field and line.strip():
+            cur[field] = (cur[field] + " " + line.strip()).strip()
+    if cur and cur["q"] and cur["a"]:
+        items.append(cur)
     return items
- 
- 
+
+
 def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = 5
+    if n < 1 or not (topic or "").strip():
+        return {"topic": topic, "grounded": False, "items": [], "raw": "",
+                "top_score": 0.0, "mode": "", "sources": [],
+                "error": "Ask for at least one question on a topic."}
+    n = min(n, MAX_N)
     hits, top_score, mode_label = _retrieve(topic, user=user)
     hits = hits[:TOP_K_GEN]                    # focus on the most on-topic chunks
     context = build_context(hits)
@@ -77,7 +92,9 @@ def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
  
     raw = ask_llm(GEN_PROMPT.format(n=n),
                   f"Context passages:\n{context}\n\nTopic: {topic}")
-    return {"topic": topic, "grounded": True, "items": _parse_qa(raw), "raw": raw,
+    # every practice answer must carry a citation; never more than asked for
+    items = [it for it in _parse_qa(raw) if _TAG.search(it["a"])][:n]
+    return {"topic": topic, "grounded": True, "items": items, "raw": raw,
             "top_score": top_score, "mode": mode_label, "sources": sources}
  
  

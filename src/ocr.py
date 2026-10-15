@@ -106,9 +106,17 @@ def ocr_image(png: bytes, verbose: bool = True) -> str:
     b64 = base64.standard_b64encode(png).decode()
     tier = _start_tier(png)
     text = ""
+    last_err = None
     while True:
         model = OCR_TIERS[tier]
-        raw = _call(model, b64)
+        try:
+            raw = _call(model, b64)
+        except Exception as e:              # retired model id, outage, bad key...
+            last_err = e
+            if tier == len(OCR_TIERS) - 1:
+                raise RuntimeError(f"OCR unavailable: {e}") from e
+            tier += 1                       # fall through to the next tier
+            continue
         _log_cost(model)
         conf = _confidence(raw)
         text = _strip(raw)
@@ -116,7 +124,7 @@ def ocr_image(png: bytes, verbose: bool = True) -> str:
         last = tier == len(OCR_TIERS) - 1
         good = (conf == "high" and illegible <= 1) or (conf == "medium" and tier >= 1)
         if verbose:
-            short = model.split("-")[1]
+            short = model.split("-")[1] if "-" in model else model
             print(f"  [{short}] confidence={conf} illegible={illegible}"
                   f" -> {'accept' if (good or last) else 'escalate'}")
         if good or last:

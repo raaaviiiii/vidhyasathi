@@ -18,6 +18,7 @@ from openpyxl import load_workbook
 from PIL import Image
 
 from src.config import DOCS_DIR, OCR_DPI, OCR_MIN_TEXT
+from src.errors import IngestError
 
 
 def clean(text: str) -> str:
@@ -26,20 +27,37 @@ def clean(text: str) -> str:
 
 
 # ---------- digital loaders ----------
-def _load_pdf(path: Path) -> list[dict]:
-    """Per page: use embedded text if present, else OCR the rendered page."""
-    doc = pymupdf.open(str(path))
-    out = []
+def _ocr(png: bytes) -> str:
+    from src import ocr                                  # lazy: only import the API here
+    return clean(ocr.ocr_image(png))
+
+
+def _load_pdf(path: Path, warnings: list | None = None) -> list[dict]:
+    """Per page: use embedded text if present, else OCR the rendered page.
+    A page OCR can't read is skipped with a warning; the rest still index."""
+    try:
+        doc = pymupdf.open(str(path))
+    except Exception as e:
+        raise IngestError("Couldn't open this PDF — it may be corrupt or password-protected.") from e
+    if doc.needs_pass:
+        raise IngestError("This PDF is password-protected. Remove the password and upload again.")
+    out, failed = [], []
     for i, page in enumerate(doc, start=1):
         t = clean(page.get_text() or "")
         if len(t) >= OCR_MIN_TEXT:                       # real digital text
             out.append({"loc": f"p{i}", "order": i, "text": t})
-        else:                                            # scanned / handwritten
-            from src.ocr import ocr_image                # lazy: only import API here
-            png = page.get_pixmap(dpi=OCR_DPI).tobytes("png")
-            ocr_t = clean(ocr_image(png))
-            if ocr_t:
-                out.append({"loc": f"p{i}", "order": i, "text": ocr_t, "ocr": True})
+            continue
+        try:                                             # scanned / handwritten
+            ocr_t = _ocr(page.get_pixmap(dpi=OCR_DPI).tobytes("png"))
+        except Exception:
+            failed.append(i)
+            continue
+        if ocr_t:
+            out.append({"loc": f"p{i}", "order": i, "text": ocr_t, "ocr": True})
+    if failed and warnings is not None:
+        pages = ", ".join(f"p{i}" for i in failed[:10]) + ("…" if len(failed) > 10 else "")
+        warnings.append(f"{len(failed)} scanned page(s) couldn't be read by OCR ({pages}) "
+                        "and were skipped.")
     return out
 
 
@@ -73,39 +91,65 @@ def _load_docx(path: Path) -> list[dict]:
     return out
 
 
+def _shape_text(sh, parts):
+    """Text from a shape, recursing into grouped shapes."""
+    if getattr(sh, "shape_type", None) == 6 or hasattr(sh, "shapes"):   # GROUP
+        for inner in getattr(sh, "shapes", []):
+            _shape_text(inner, parts)
+        return
+    if getattr(sh, "has_text_frame", False) and sh.has_text_frame:
+        for para in sh.text_frame.paragraphs:
+            line = "".join(r.text for r in para.runs)
+            if line.strip():
+                parts.append(line)
+    if getattr(sh, "has_table", False) and sh.has_table:
+        for row in sh.table.rows:
+            parts.append(" | ".join(c.text for c in row.cells))
+
+
 def _load_pptx(path: Path) -> list[dict]:
     out = []
     for i, slide in enumerate(Presentation(str(path)).slides, start=1):
         parts = []
         for sh in slide.shapes:
-            if sh.has_text_frame:
-                for para in sh.text_frame.paragraphs:
-                    line = "".join(r.text for r in para.runs)
-                    if line.strip():
-                        parts.append(line)
-            if sh.has_table:
-                for row in sh.table.rows:
-                    parts.append(" | ".join(c.text for c in row.cells))
+            _shape_text(sh, parts)
         t = clean("\n".join(parts))
         if t:
             out.append({"loc": f"slide {i}", "order": i, "text": t})
     return out
 
 
+def _decode(raw: bytes) -> str:
+    """UTF-8 (with/without BOM), UTF-16 (Notepad 'Unicode'), else Windows-1252."""
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw[3:].decode("utf-8", errors="replace")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
+
+
 def _load_text(path: Path) -> list[dict]:
-    t = clean(path.read_text(encoding="utf-8", errors="ignore"))
+    t = clean(_decode(path.read_bytes()))
     return [{"loc": "text", "order": 1, "text": t}] if t else []
 
 
 def _load_csv(path: Path) -> list[dict]:
     out = []
-    with open(path, newline="", encoding="utf-8", errors="ignore") as f:
-        rows = list(csv.reader(f))
+    rows = list(csv.reader(io.StringIO(_decode(path.read_bytes()), newline="")))
     if not rows:
         return out
-    header = rows[0]
+    header = [h.strip() for h in rows[0]]
     for i, row in enumerate(rows[1:], start=1):
-        line = "; ".join(f"{h}: {v}" for h, v in zip(header, row) if str(v).strip())
+        cells = []
+        for j, v in enumerate(row):
+            if not str(v).strip():
+                continue
+            h = header[j] if j < len(header) and header[j] else f"col {j + 1}"
+            cells.append(f"{h}: {v}")
+        line = "; ".join(cells)
         if line:
             out.append({"loc": f"row {i}", "order": i, "text": line})
     return out
@@ -128,11 +172,17 @@ def _load_xlsx(path: Path) -> list[dict]:
 
 
 # ---------- image loader (pure OCR) ----------
-def _load_image(path: Path) -> list[dict]:
-    from src.ocr import ocr_image
-    img = Image.open(path).convert("RGB")
+def _load_image(path: Path, warnings: list | None = None) -> list[dict]:
+    try:
+        img = Image.open(path).convert("RGB")
+    except Exception as e:
+        raise IngestError("Couldn't open this image — it may be corrupt.") from e
     buf = io.BytesIO(); img.save(buf, format="PNG")
-    text = clean(ocr_image(buf.getvalue()))
+    try:
+        text = _ocr(buf.getvalue())
+    except Exception as e:
+        raise IngestError("Couldn't read the text in this image: OCR is unavailable "
+                          "(check ANTHROPIC_API_KEY and your internet connection).") from e
     return [{"loc": "image", "order": 1, "text": text, "ocr": True}] if text else []
 
 
@@ -161,8 +211,21 @@ def unsupported_files() -> list[Path]:
                   and not p.name.startswith("."))
 
 
-def load_document(path: Path) -> list[dict]:
-    return LOADERS[path.suffix.lower()](path)
+def load_document(path: Path, warnings: list | None = None) -> list[dict]:
+    """Load any supported file. Raises IngestError with a student-safe message if the
+    file can't be read; non-fatal problems are appended to `warnings`."""
+    loader = LOADERS.get(path.suffix.lower())
+    if loader is None:
+        raise IngestError(f"Unsupported file type: {path.suffix or '(none)'}")
+    try:
+        if loader in (_load_pdf, _load_image):
+            return loader(path, warnings)
+        return loader(path)
+    except IngestError:
+        raise
+    except Exception as e:
+        raise IngestError(f"Couldn't read this {path.suffix.lstrip('.').upper()} file — "
+                          "it may be corrupt or in an unexpected format.") from e
 
 
 def source_label(path: Path) -> str:

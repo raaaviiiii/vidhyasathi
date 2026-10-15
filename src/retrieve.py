@@ -3,20 +3,25 @@ Limit capped at KB size (adaptive to document size).
 """
 from src.config import COLLECTION_NAME, RETRIEVE_CANDIDATES
 from src.embed import embed_query
+from qdrant_client.models import FieldCondition, MatchValue
 from src.store import get_client, count, user_filter
 
 
 def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES,
-             user: str | None = None) -> list[dict]:
+             user: str | None = None, source: str | None = None) -> list[dict]:
     client = get_client()
-    total = count(user)
-    limit = min(top_k, total) if total else top_k
+    total = count(user)               # 0 when the collection doesn't exist yet
+    if total == 0:
+        return []
+    limit = min(top_k, total)
 
     qvec = embed_query(question)
     hits = client.query_points(
         collection_name=COLLECTION_NAME,
         query=qvec,
-        query_filter=user_filter(user),
+        query_filter=(user_filter(user, FieldCondition(key="source",
+                                                       match=MatchValue(value=source)))
+                      if source else user_filter(user)),
         limit=limit,
         with_payload=True,
     ).points

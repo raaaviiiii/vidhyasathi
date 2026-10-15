@@ -54,14 +54,14 @@ SMALL_KB_MAX = 30
 OCR_DPI = 200
 OCR_MIN_TEXT = 20      # a page with fewer chars than this is treated as scanned -> OCR
 # tiers, easy -> hard; escalation walks down this list
-OCR_TIERS = ["claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-4-8"]
+OCR_TIERS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]  # current vision models (Oct 2026)
 OCR_BLUR_FLOOR = 60.0          # sharpness below this = blurry scan -> skip Haiku
 OCR_MAX_TOKENS = 2000
 OCR_CACHE_PATH = str(BASE_DIR / "ocr_cache.json")   # pay per page once, ever
 OCR_COST_LOG = str(BASE_DIR / "ocr_cost_log.csv")
 # ROUGH per-page USD estimates for the running spend log — tune to current pricing
-OCR_EST_COST = {
-    "claude-haiku-4-5-20251001": 0.003,
-    "claude-sonnet-5": 0.010,
-    "claude-opus-4-8": 0.050,
+OCR_EST_COST = {                      # ~1.6k input + ~1k output tokens per page
+    "claude-haiku-5-5": 0.001,
+    "claude-sonnet-5-5": 0.015,
+    "claude-opus-5-5": 0.03,
 }

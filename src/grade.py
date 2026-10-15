@@ -14,6 +14,7 @@ Run:  python -m src.grade "State the Division Algorithm"
       python -m src.grade "State the Division Algorithm" "a = bq + r where 0<=r<b"
       (or pass the answer as the second argument)
 """
+import re
 from src.answer import _retrieve, _gate, build_context, ask_llm, REFUSAL
 from src.config import HELP_SCORE
  
@@ -49,7 +50,28 @@ GRADE_PROMPT = (
 )
  
  
+_SCALE = r"(?:5|10|20|25|50|100)"
+_MARK_LINE = re.compile(
+    r"(?im)^.*(?:"
+    r"^\s*(?:score|marks?|grade|rating|result)\s*[:=\-]"           # "Score: ..."
+    r"|\b\d+(?:\.\d+)?\s*/\s*" + _SCALE + r"\b"                     # "8/10"
+    r"|\bout of " + _SCALE + r"\b"                                   # "7 out of 10"
+    r"|\b\d+(?:\.\d+)?\s*marks?\b"                                  # "6 marks"
+    r"|\b(?:score|marks?)\b[^\n]*\d"                                # "score ... 80%"
+    r").*$\n?")
+
+
+def _strip_marks(text: str) -> str:
+    """'No marks' is a promise, not just a prompt request: drop any line that
+    scores the answer (Score: 8/10, 7 marks, 80%...)."""
+    return re.sub(r"\n{3,}", "\n\n", _MARK_LINE.sub("", text or "")).strip()
+
+
 def grade(question: str, student_answer: str, user: str | None = None) -> dict:
+    if not (student_answer or "").strip() or not (question or "").strip():
+        return {"question": question, "grounded": False, "feedback": "", "top_score": 0.0,
+                "mode": "", "sources": [],
+                "error": "Type both the question and your answer to get feedback."}
     hits, top_score, mode_label = _retrieve(question, user=user)
     hits = hits[:TOP_K_GRADE]
     context = build_context(hits)
@@ -72,7 +94,7 @@ def grade(question: str, student_answer: str, user: str | None = None) -> dict:
         f"problems that are NOT the question \u2014 ignore those):\n{context}\n\n"
         f"STUDENT'S ANSWER:\n{student_answer}",
     )
-    return {"question": question, "grounded": True, "feedback": feedback,
+    return {"question": question, "grounded": True, "feedback": _strip_marks(feedback),
             "top_score": top_score, "mode": mode_label, "sources": sources}
  
  

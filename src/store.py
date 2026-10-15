@@ -1,116 +1,202 @@
-"""Store step: source/locator/ocr-tagged chunk vectors into local Qdrant.
+"""Store step: chunk vectors in Qdrant, scoped per student.
 
-Per-user isolation: each point carries a `user` payload field. Passing user=None
-(CLI / full rebuild) writes an untagged, shared point; the web app passes the
-logged-in email so retrieval, count, and delete can all be scoped to one student.
+Every point carries:
+  user    — the student's email; None for the shared/CLI bucket
+  doc     — the exact uploaded file name ("notes.pdf"), the identity of a document
+  source  — the display label used in citations ("notes")
+  ver     — which ingest of that document the chunk belongs to (atomic re-upload)
+
+Scoping rules (never "all users" by accident):
+  user="a@x.com"  -> only that student's points
+  user=None       -> only the shared bucket (points with no user)
 """
+import threading
 import uuid
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import (Distance, VectorParams, PointStruct,
-                                  Filter, FieldCondition, MatchValue, FilterSelector)
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import (Distance, FieldCondition, Filter, FilterSelector,
+                                  IsEmptyCondition, MatchValue, PayloadField,
+                                  PayloadSchemaType, PointStruct, VectorParams)
+
 from src.config import QDRANT_PATH, QDRANT_URL, COLLECTION_NAME, EMBED_DIM
 
-# fixed namespace so a point id is deterministic from (user, chunk_id):
-# re-uploading the same file for the same user overwrites instead of duplicating.
 _NS = uuid.UUID("5f9b1e2a-1c3d-4e5f-8a9b-0c1d2e3f4a5b")
+UPSERT_BATCH = 128            # keeps each request far under Qdrant's 32 MB body cap
 
 _client = None
+_lock = threading.Lock()
 
 
-def user_filter(user):
-    """Qdrant filter that scopes points to one user (or None for all)."""
-    if not user:
-        return None
-    return Filter(must=[FieldCondition(key="user", match=MatchValue(value=user))])
-
-
-def _source_filter(user, source):
-    conds = [FieldCondition(key="source", match=MatchValue(value=source))]
+# ------------------------------------------------------------------ filters
+def _user_cond(user):
     if user:
-        conds.append(FieldCondition(key="user", match=MatchValue(value=user)))
-    return Filter(must=conds)
+        return FieldCondition(key="user", match=MatchValue(value=user))
+    return IsEmptyCondition(is_empty=PayloadField(key="user"))
 
 
+def user_filter(user, *extra):
+    """Filter scoped to one student, or to the shared bucket when user is None."""
+    return Filter(must=[_user_cond(user), *extra])
+
+
+def _doc_cond(doc):
+    return FieldCondition(key="doc", match=MatchValue(value=doc))
+
+
+def _source_cond(source):
+    return FieldCondition(key="source", match=MatchValue(value=source))
+
+
+# ------------------------------------------------------------------ client
 def get_client():
     global _client
     if _client is None:
-        _client = QdrantClient(url=QDRANT_URL) if QDRANT_URL else QdrantClient(path=QDRANT_PATH)
+        with _lock:
+            if _client is None:
+                _client = (QdrantClient(url=QDRANT_URL, timeout=30) if QDRANT_URL
+                           else QdrantClient(path=QDRANT_PATH))
     return _client
 
 
 def close():
     global _client
     if _client is not None:
-        _client.close(); _client = None
+        _client.close()
+        _client = None
+
+
+def collection_exists() -> bool:
+    return get_client().collection_exists(COLLECTION_NAME)
+
+
+def ensure_collection():
+    """Create the collection once, safely under concurrent first uploads."""
+    client = get_client()
+    if client.collection_exists(COLLECTION_NAME):
+        return
+    with _lock:
+        if client.collection_exists(COLLECTION_NAME):
+            return
+        try:
+            client.create_collection(
+                collection_name=COLLECTION_NAME,
+                vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE),
+            )
+        except UnexpectedResponse as e:
+            if e.status_code != 409:        # another process created it first: fine
+                raise
+        for field in ("user", "doc", "source", "ver"):
+            try:
+                client.create_payload_index(COLLECTION_NAME, field,
+                                            field_schema=PayloadSchemaType.KEYWORD)
+            except Exception:
+                pass                        # index is an optimisation, never fatal
 
 
 def reset_collection():
+    """Drop EVERYTHING (all students). Only for a deliberate full wipe."""
     client = get_client()
     if client.collection_exists(COLLECTION_NAME):
         client.delete_collection(COLLECTION_NAME)
-    client.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE),
-    )
+    ensure_collection()
 
 
-def _point_id(user, chunk_id):
-    return str(uuid.uuid5(_NS, f"{user or ''}:{chunk_id}"))
+# ------------------------------------------------------------------ writes
+def _point_id(user, doc, ver, chunk_id):
+    return str(uuid.uuid5(_NS, f"{user or ''}\x1f{doc or ''}\x1f{ver or ''}\x1f{chunk_id}"))
 
 
-def upsert_chunks(chunks, vectors, user=None):
+def upsert_chunks(chunks, vectors, user=None, doc=None, ver=None):
+    """Store chunks for one document. `doc` defaults to each chunk's source label."""
+    if not chunks:
+        return 0
+    if len(chunks) != len(vectors):
+        raise ValueError("chunks and vectors differ in length")
+    ensure_collection()
     client = get_client()
-    if not client.collection_exists(COLLECTION_NAME):
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE),
-        )
-    points = [
-        PointStruct(
-            id=_point_id(user, chunks[i]["id"]),
-            vector=vectors[i],
+    points = []
+    for c, v in zip(chunks, vectors):
+        d = doc or c.get("doc") or c.get("source", "document")
+        points.append(PointStruct(
+            id=_point_id(user, d, ver, c["id"]),
+            vector=v,
             payload={
-                "chunk_id": chunks[i]["id"],
+                "chunk_id": c["id"],
                 "user": user,
-                "source": chunks[i].get("source", "document"),
-                "loc": chunks[i].get("loc", ""),
-                "order": chunks[i].get("order", 0),
-                "text": chunks[i]["text"],
-                "ocr": chunks[i].get("ocr", False),
+                "doc": d,
+                "ver": ver,
+                "source": c.get("source", "document"),
+                "loc": c.get("loc", ""),
+                "order": c.get("order", 0),
+                "text": c["text"],
+                "ocr": c.get("ocr", False),
             },
-        )
-        for i in range(len(chunks))
-    ]
-    client.upsert(collection_name=COLLECTION_NAME, points=points)
+        ))
+    for i in range(0, len(points), UPSERT_BATCH):
+        client.upsert(collection_name=COLLECTION_NAME, points=points[i:i + UPSERT_BATCH],
+                      wait=True)
+    return len(points)
 
 
-def count(user=None):
-    return get_client().count(
-        collection_name=COLLECTION_NAME, count_filter=user_filter(user)
-    ).count
+def replace_doc(user, doc, chunks, vectors):
+    """Atomically swap in a new version of one document: write the new chunks first,
+    then remove the old ones. If the write fails, the old version is left intact."""
+    ver = uuid.uuid4().hex
+    try:
+        upsert_chunks(chunks, vectors, user=user, doc=doc, ver=ver)
+    except Exception:
+        try:                                 # best-effort: drop the half-written version
+            _delete(user_filter(user, _doc_cond(doc),
+                                FieldCondition(key="ver", match=MatchValue(value=ver))))
+        except Exception:
+            pass
+        raise
+    old = Filter(must=[_user_cond(user), _doc_cond(doc)],
+                 must_not=[FieldCondition(key="ver", match=MatchValue(value=ver))])
+    _delete(old)
+    return ver
 
 
-def delete_source(user, source):
-    """Remove one document's chunks for a user (for re-upload / 'remove material')."""
+def _delete(flt):
     client = get_client()
     if not client.collection_exists(COLLECTION_NAME):
         return
     client.delete(collection_name=COLLECTION_NAME,
-                  points_selector=FilterSelector(filter=_source_filter(user, source)))
+                  points_selector=FilterSelector(filter=flt), wait=True)
+
+
+def delete_doc(user, doc):
+    """Remove one uploaded document (by exact file name) for one student."""
+    _delete(user_filter(user, _doc_cond(doc)))
+
+
+def delete_source(user, source):
+    """Remove chunks by display label, within one student's (or the shared) bucket."""
+    _delete(user_filter(user, _source_cond(source)))
+
+
+def delete_bucket(user):
+    """Remove every chunk in one bucket (a student, or the shared bucket)."""
+    _delete(user_filter(user))
 
 
 def delete_user(user):
-    """Remove ALL of a user's chunks (account deletion)."""
-    if not user:
-        return
+    """Remove ALL of a student's chunks (account deletion). Never touches others."""
+    if user:
+        delete_bucket(user)
+
+
+# ------------------------------------------------------------------ reads
+def count(user=None):
     client = get_client()
-    if client.collection_exists(COLLECTION_NAME):
-        client.delete(collection_name=COLLECTION_NAME, points_selector=FilterSelector(filter=user_filter(user)))
+    if not client.collection_exists(COLLECTION_NAME):
+        return 0
+    return client.count(collection_name=COLLECTION_NAME,
+                        count_filter=user_filter(user), exact=True).count
 
 
-def user_sources(user):
-    """Distinct source labels a user has indexed (to flag which uploads are live)."""
+def _scroll_field(user, field):
     client = get_client()
     if not client.collection_exists(COLLECTION_NAME):
         return set()
@@ -118,11 +204,21 @@ def user_sources(user):
     while True:
         pts, offset = client.scroll(
             collection_name=COLLECTION_NAME, scroll_filter=user_filter(user),
-            with_payload=["source"], with_vectors=False, limit=256, offset=offset)
+            with_payload=[field], with_vectors=False, limit=512, offset=offset)
         for p in pts:
-            s = p.payload.get("source")
-            if s:
-                seen.add(s)
+            v = (p.payload or {}).get(field)
+            if v:
+                seen.add(v)
         if offset is None:
             break
     return seen
+
+
+def user_sources(user):
+    """Distinct citation labels in a bucket."""
+    return _scroll_field(user, "source")
+
+
+def user_docs(user):
+    """Distinct document file names in a bucket (to flag which uploads are live)."""
+    return _scroll_field(user, "doc")
