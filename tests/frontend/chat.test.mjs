@@ -184,3 +184,16 @@ test('user question echo is shown as typed text, including & entities', async ()
   assert.equal(b.querySelectorAll('*').length, 0);
   assert.equal(b.textContent, 'is &lt;b&gt; a tag? <script>x</script>');
 });
+
+test('what a follow-up meant travels with the conversation, and reactions are labelled', async () => {
+  let n = 0;
+  const env = boot({ storage: USER, routes: { '/api/answer': () => (++n === 1
+    ? { answer: 'A1', decision: 'answer', top_score: 0.8, sources: [], resolved_question: 'Teach me satellites', intent: 'followup' }
+    : { answer: 'A2', decision: 'answer', top_score: 0.8, sources: [], resolved_question: 'Teach me satellites', intent: 'yes' }) } });
+  env.window.setModeByName('teach');
+  await env.ask('teach me it');
+  await env.ask('ahh yes it does');
+  const h = env.callsTo('/api/answer')[1].body.history;
+  assert.deepEqual({ ...h[0] }, { role: 'user', content: 'teach me it', meant: 'Teach me satellites' });
+  assert.match(env.lastBot().querySelector('.understood').textContent, /moving on with: Teach me satellites/);
+});

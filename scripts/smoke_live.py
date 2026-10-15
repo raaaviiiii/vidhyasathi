@@ -179,6 +179,13 @@ def _say(token, hist, question, mode="quick"):
     return r, hist, dt
 
 
+def _overlap(a, b) -> float:
+    """How much two replies share (0 = nothing, 1 = identical wording)."""
+    wa = set(str(a or "").lower().split())
+    wb = set(str(b or "").lower().split())
+    return len(wa & wb) / max(1, min(len(wa), len(wb)))
+
+
 def conversation_checks(ta):
     """The way people actually chat — these exact turns used to be refused."""
     print("\n  conversation:")
@@ -210,6 +217,22 @@ def conversation_checks(ta):
            f"decision={r.get('decision')}", dt)
     r, h, dt = _say(ta, h, "thanks!")
     record("'thanks' gets a friendly reply", r.get("decision") == "chat", "", dt)
+    # reactions: understood -> move on (never repeat), pushback -> re-check honestly
+    h = []
+    r1, h, dt = _say(ta, h, "teach me the Euclidean algorithm", mode="teach")
+    r2, h, dt = _say(ta, h, "ahh yes it does", mode="teach")
+    record("'yes it does' moves on instead of repeating",
+           r2.get("intent") == "yes" and _overlap(r1.get("answer"), r2.get("answer")) < 0.6,
+           f"intent={r2.get('intent')} overlap={_overlap(r1.get('answer'), r2.get('answer')):.2f}", dt)
+    r, h, dt = _say(ta, h, "something different was taught to me in class", mode="teach")
+    record("'taught differently in class' gets an honest re-check, not a refusal",
+           r.get("intent") == "feedback" and r.get("decision") != "refuse", "", dt)
+    r, h, dt = _say(ta, h, "my question about earlier is not fully answered", mode="teach")
+    record("'my earlier question' refers to the last topic",
+           "euclid" in (r.get("resolved_question") or "").lower()
+           or "gcd" in (r.get("resolved_question") or "").lower(),
+           str(r.get("resolved_question")), dt, level="WARN")
+
     r, h, dt = _say(ta, [], "what files do I have?")
     record("'what files do I have?' lists the material", r.get("decision") == "chat"
            and "number" in (r.get("answer") or "").lower(), "", dt, level="WARN")

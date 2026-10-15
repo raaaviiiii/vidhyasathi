@@ -306,7 +306,7 @@ def test_teach_passes_history_to_tutor(fakes, index_text):
     index_text(A, "Number Theory", NUMBER_THEORY)
     answer(NT_STRONG, mode="teach", history=_HIST, user=A)
     (_, msgs), = [c for c in fakes.llm.calls if c[0] == "teach"]
-    assert msgs[1:3] == _HIST and msgs[-1]["content"].endswith("Student's message: " + NT_STRONG)
+    assert msgs[1:3] == _HIST and ("Student's message: " + NT_STRONG) in msgs[-1]["content"]
 
 
 def test_teach_history_cannot_inject_system_role(fakes, index_text):

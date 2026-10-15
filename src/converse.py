@@ -45,20 +45,85 @@ _MATERIAL_META = re.compile(
     r"\bwhat\s+(all\s+)?(topics|subjects)\s+(do|can|are|have)\b|"
     r"\blist\s+(my\s+|the\s+|all\s+)?(files|documents|notes|topics|modules)\b", re.I)
 
-# a reply that only acknowledges the last answer
-_ACK = {
-    "ok", "okay", "okk", "k", "kk", "cool", "nice", "great", "good", "got it", "gotcha",
-    "understood", "alright", "fine", "sure", "yes", "yeah", "yep", "yup", "hmm", "hm",
-    "oh", "ohh", "ah", "wow", "awesome", "perfect", "right", "i see", "makes sense",
-    "that makes sense", "clear", "it's clear", "its clear", "got it thanks", "ok thanks",
-    "okay thanks", "nice thanks", "no", "nope", "no thanks", "not really",
-}
-# a reply that asks to keep going
+# ---------------------------------------------------------------- reactions to the last reply
+# fillers people put in front of a reaction: "ahh yes it does", "oh okay got it"
+_FILLER = re.compile(r"^(a+h+|o+h+|hm+|uh+|um+|haha+|lol|wow|oh\s+wow|ok+|okay|alright)\b[\s,!.]*", re.I)
+# "I understood" — in a lesson this means: move on to the next idea
+_ACK_YES = re.compile(
+    r"^(yes|yeah|yea|yep|yup|ya|sure|right|correct|exactly|true|ok+|okay|k+|cool|nice|great|"
+    r"good|fine|alright|awesome|perfect|clear|got\s+it|i\s+got\s+it|gotcha|understood|"
+    r"i\s+understand|i\s+understood|i\s+see|it\s+does|yes\s+it\s+does|yes\s+i\s+do|"
+    r"(that\s+|it\s+)?makes\s+sense|(it'?s|its|that'?s|thats)\s+clear|clear\s+now|"
+    r"i\s+get\s+it(\s+now)?|now\s+i\s+get\s+it|that\s+helps|that\s+helped|"
+    r"makes\s+sense\s+now)"
+    r"(\s+(now|thanks|thank\s+you|bro|man|sir|ma'?am|a\s+lot|totally|completely))*$", re.I)
+# "I didn't understand" — explain the same idea again, more simply
+_ACK_NO = re.compile(
+    r"^(no|nope|nah|not\s+really|not\s+quite|not\s+at\s+all|i\s+don'?t\s+(get|understand)(\s+it)?|"
+    r"i\s+didn'?t\s+(get|understand)(\s+it)?|didn'?t\s+(get|understand)(\s+it)?|"
+    r"(i'?m\s+)?(still\s+)?(lost|confused)|still\s+don'?t\s+get\s+it|"
+    r"(that\s+|it\s+)?doesn'?t\s+make\s+sense|(it'?s|its)\s+(confusing|unclear|hard)|"
+    r"huh|what|explain\s+(again|more\s+simply|simpler))$", re.I)
+# "keep going"
 _CONTINUE = {
-    "continue", "next", "go on", "more", "tell me more", "and", "and?", "then", "then?",
-    "go ahead", "keep going", "carry on", "what next", "what's next", "whats next",
-    "next one", "next topic", "proceed",
+    "continue", "next", "go on", "more", "tell me more", "and", "then", "go ahead",
+    "keep going", "carry on", "what next", "what's next", "whats next", "next one",
+    "next idea", "next part", "next topic", "proceed", "move on", "lets move on",
+    "let's move on", "ok next", "okay next", "yes next", "yes continue", "ok continue",
 }
+_QUICK_ACK = {"thanks", "ok thanks", "okay thanks", "got it thanks", "nice thanks", "cool thanks"}
+
+# pushback on the last reply: it was wrong, incomplete, off-target, or class taught otherwise
+_FEEDBACK = re.compile(
+    r"\b(wrong|incorrect|not\s+(correct|right|true|accurate|what\s+i\s+(asked|meant|wanted))|"
+    r"that'?s\s+not\s+(it|right|what)|doesn'?t\s+answer|didn'?t\s+answer|"
+    r"not\s+(fully|really|completely|properly)?\s*answered|(question|doubt)\s+(is|was)\s+not|"
+    r"you\s+(didn'?t|did\s+not|missed|skipped|ignored)|"
+    r"taught\s+(to\s+me\s+|me\s+|us\s+)?(something\s+)?(different|differently|otherwise)|"
+    r"(different|differently|otherwise)\s+(was\s+|is\s+)?taught|"
+    r"(teacher|sir|ma'?am|miss|professor|lecturer|faculty)\s+(said|says|told|taught)|"
+    r"(in|at)\s+(class|college|school|the\s+lecture)|are\s+you\s+sure|is\s+(that|this)\s+(right|correct|true)|"
+    r"my\s+(question|doubt)\s+(about|from)?\s*(earlier|before)|answer\s+my\s+(question|earlier)|"
+    r"that\s+doesn'?t\s+seem\s+right|not\s+convinced|i\s+disagree)", re.I)
+# words of a reaction that never name a topic
+_FEEDBACK_WORDS = {
+    "wrong", "incorrect", "correct", "right", "true", "accurate", "answer", "answered",
+    "answers", "question", "questions", "doubt", "earlier", "before", "taught", "teach",
+    "teacher", "class", "college", "school", "lecture", "sir", "maam", "ma", "am", "miss",
+    "professor", "lecturer", "faculty", "different", "differently", "otherwise", "sure",
+    "fully", "really", "completely", "properly", "missed", "skipped", "ignored", "said",
+    "says", "told", "seem", "convinced", "disagree", "something", "think", "thought",
+    "actually", "asked", "meant", "wanted", "didn", "doesn", "don", "isn", "wasn", "not",
+}
+
+
+def reaction(question: str) -> str | None:
+    """'yes' | 'no' | 'continue' | 'thanks' | None — a reply that reacts to the last
+    message rather than asking something new."""
+    n = _norm(question)
+    if n in _QUICK_ACK:
+        return "thanks"
+    prev = None
+    while prev != n:                                   # "ahh oh yes it does" -> "yes it does"
+        prev, n = n, _norm(_FILLER.sub("", n, count=1))
+    if not n:
+        return "yes"
+    if n in _CONTINUE:
+        return "continue"
+    if _ACK_YES.match(n):
+        return "yes"
+    if _ACK_NO.match(n):
+        return "no"
+    return None
+
+
+def is_feedback(question: str) -> bool:
+    """Pushback on the previous reply, without naming a NEW topic."""
+    if not _FEEDBACK.search(question or ""):
+        return False
+    return not (topic_words(question) - _FEEDBACK_WORDS)
+
+
 # words that point back at something said earlier
 _REFERS_BACK = {
     "it", "its", "this", "that", "these", "those", "they", "them", "their", "he", "she",
@@ -95,13 +160,16 @@ def _strip_pleasantries(text: str) -> str:
 
 
 def classify(question: str, history: list[dict], mode: str = "quick") -> str:
-    """'chat' | 'followup' | 'question'.
+    """What kind of message this is:
 
-    chat     — small talk, questions about the app, "what material do I have", or a
-               request too vague to search ("teach me") with nothing earlier to lean on
-    followup — leans on the conversation ("teach me it", "each concept", "why?", "ok"
-               in a lesson) and must be rewritten before searching
-    question — a self-contained question; search with it as it is"""
+    chat      small talk, questions about the app, "what material do I have", or a
+              request too vague to search ("teach me") with nothing earlier to lean on
+    yes       "ok" / "got it" / "ahh yes it does" after a lesson step: teach the NEXT idea
+    no        "no" / "I don't get it": explain the same idea again, more simply
+    continue  "next" / "go on" / "more"
+    feedback  pushback on the last reply: wrong, incomplete, "taught differently in class"
+    followup  leans on the conversation ("teach me it", "each concept") — rewrite it
+    question  self-contained; search with it as it is"""
     q = _norm(question)
     if not q:
         return "chat"
@@ -110,11 +178,15 @@ def classify(question: str, history: list[dict], mode: str = "quick") -> str:
     rest = _norm(_strip_pleasantries(q))
     if not rest:                                   # only "hi" / "thanks"
         return "chat"
-    if rest in _ACK:
-        # in a lesson "yes"/"ok"/"no" answers the tutor's question: keep teaching
-        return "followup" if (history and mode == "teach") else "chat"
-    if rest in _CONTINUE:
-        return "followup" if history else "chat"
+    react = reaction(rest)
+    if react:
+        if not history or react == "thanks":
+            return "chat"
+        if react == "yes" and mode != "teach":
+            return "chat"                          # "ok" after a quick answer: just acknowledge
+        return react
+    if history and is_feedback(rest):
+        return "feedback"
     if wanted_locs(rest):                          # "what's on slide 4"
         return "question"
     if is_broad(rest) and not (history and set(words(rest)) & _REFERS_BACK):
@@ -122,6 +194,20 @@ def classify(question: str, history: list[dict], mode: str = "quick") -> str:
     if not history:
         return "question" if topic_words(rest) else "chat"
     return "followup" if needs_context(rest) else "question"
+
+
+def last_topic(history: list[dict]) -> str:
+    """The most recent thing the student actually asked about: what their last real
+    question meant (rewritten), or its own words."""
+    for m in reversed(history):
+        if m["role"] != "user":
+            continue
+        meant = m.get("meant")
+        if meant and topic_words(meant):
+            return meant
+        if topic_words(m["content"]) and not reaction(m["content"]) and not is_feedback(m["content"]):
+            return m["content"]
+    return ""
 
 
 def needs_context(question: str) -> bool:
@@ -149,9 +235,9 @@ REWRITE_PROMPT = (
     "actual topic or document they refer to, taken from the conversation.\n"
     "- Keep what the student wants: explain, teach, define, example, compare, list, "
     "summarise, in detail, simpler, and so on.\n"
-    "- If the student says ok / yes / next / continue during a lesson, rewrite it as a "
-    "request to continue teaching that topic with the next idea. If they say no / didn't "
-    "get it, rewrite it as a request to explain the same idea more simply.\n"
+    "- 'My earlier question' or 'the question before' means the most recent question the "
+    "student asked before this message.\n"
+    "- If the student corrects you ('not this, about X'), the question is about X.\n"
     "- If the latest message is already a complete question, return it unchanged.\n"
     "- Never answer the question. Never add facts. Never add topics the conversation "
     "didn't mention.\n"
@@ -174,7 +260,10 @@ def rewrite_messages(question: str, history: list[dict]) -> list[dict]:
     lines = []
     for m in turns:
         who = "Student" if m["role"] == "user" else "Assistant"
-        lines.append(f"{who}: {_plain(m['content'], 500 if m['role'] == 'assistant' else 300)}")
+        line = f"{who}: {_plain(m['content'], 500 if m['role'] == 'assistant' else 300)}"
+        if m.get("meant") and m["meant"] != m["content"]:
+            line += f" (meaning: {_plain(m['meant'], 200)})"
+        lines.append(line)
     convo = "\n".join(lines) or "(no earlier messages)"
     return [{"role": "system", "content": REWRITE_PROMPT},
             {"role": "user", "content":
@@ -220,7 +309,7 @@ def clean_rewrite(raw: str, question: str, history: list[dict]) -> str | None:
         return None                                # an answer, not a question
     seen = set(words(question))
     for m in history[-6:]:
-        seen |= set(words(m["content"]))
+        seen |= set(words(m["content"])) | set(words(m.get("meant") or ""))
     invented = {w for w in words(line)
                 if w not in seen and w not in STOP and w not in FOLLOWUP
                 and w not in SCOPE and w not in _SAFE_EXTRA and not w.isdigit()}

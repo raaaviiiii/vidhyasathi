@@ -388,7 +388,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 const API = location.origin;   // same-origin when served by app.py
 let mode='quick', history=[], busy=false;
 const HISTORY_TURNS=20;      // messages of conversation sent with each question (server keeps the last 20)
-function remember(q,a){history.push({role:'user',content:String(q).slice(0,4000)});history.push({role:'assistant',content:String(a).slice(0,7900)});if(history.length>40)history=history.slice(-40);}
+function remember(q,a,meant){const u={role:'user',content:String(q).slice(0,4000)};if(typeof meant==='string'&&meant.trim())u.meant=meant.trim().slice(0,600);history.push(u);history.push({role:'assistant',content:String(a).slice(0,7900)});if(history.length>40)history=history.slice(-40);}
 
 /* ---------- SVG art generators ---------- */
 function petal(cx,cy,r1,r2,w,tip){return `M ${cx} ${cy-r1} C ${cx+w} ${cy-(r1+r2)/2} ${cx+w*0.55} ${cy-r2+tip} ${cx} ${cy-r2} C ${cx-w*0.55} ${cy-r2+tip} ${cx-w} ${cy-(r1+r2)/2} ${cx} ${cy-r1} Z`;}
@@ -629,8 +629,10 @@ function answerNode(r,q,entry){
   const d=msg('bot'+(kind?' '+kind:''),'VIDHYĀSATHI');
   d.append(renderMd(el('div','bubble'),r.answer));
   if(r.decision==='chat')return d;                 // small talk: no badges, scores or sources
-  if(typeof r.resolved_question==='string'&&r.resolved_question.trim())
-    d.append(el('div','understood','\u21b3 understood as: '+r.resolved_question.trim().slice(0,200)));
+  if(typeof r.resolved_question==='string'&&r.resolved_question.trim()){
+    const lead={yes:'moving on with: ',continue:'continuing: ',no:'explaining again, more simply: ',feedback:'re-checking your notes on: '}[r.intent]||'understood as: ';
+    d.append(el('div','understood','\u21b3 '+lead+r.resolved_question.trim().slice(0,200)));
+  }
   const meta=el('div','meta');
   const badge=DECISIONS[r.decision];
   if(badge)meta.append(el('span','tag '+badge[0],badge[1]));
@@ -715,7 +717,7 @@ async function send(){
       const r=await post('/api/answer',{question:q,mode:reqMode,web,history:history.slice(-HISTORY_TURNS)});
       if(gen!==chatGen)return;
       renderAnswer(r,q);
-      remember(q,String(r.answer||''));
+      remember(q,String(r.answer||''),r.resolved_question);
     }
   }catch(e){ if(gen===chatGen&&e.status!==401)renderError(e.message); }
   finally{ if(gen===chatGen)busy=false; }

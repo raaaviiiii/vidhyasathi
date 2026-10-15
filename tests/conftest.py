@@ -106,6 +106,8 @@ class FakeLLM:
             return "rewrite"
         if "friendly study companion" in s:
             return "chat"
+        if "re-checking your previous reply" in s:
+            return "feedback"
         if "retrieval checker" in s:
             return "ground"
         if "STRUCTURED OVERVIEW" in s:
@@ -153,6 +155,8 @@ class FakeLLM:
             return f"{latest} ({prior[-1]})" if prior else latest
         if kind == "chat":
             return "Hi! Ask me anything from your notes."
+        if kind == "feedback":
+            return f"Fair point. Here is exactly what your notes say. {self._first_tag(user)}"
         if kind == "ground":
             ctx, _, q = user.partition("Question:")
             q = q.replace("Answer YES or NO:", "")

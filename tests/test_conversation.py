@@ -193,8 +193,15 @@ def test_model_gets_a_large_enough_context_window(monkeypatch):
     ("explain each concept in detail", True, "quick", "followup"),
     ("what about the second one?", True, "quick", "followup"),
     ("why?", True, "quick", "followup"),
-    ("next", True, "teach", "followup"),
-    ("ok", True, "teach", "followup"),
+    ("next", True, "teach", "continue"),
+    ("ok", True, "teach", "yes"),
+    ("ahh yes it does", True, "teach", "yes"),
+    ("no, I don't get it", True, "teach", "followup"),
+    ("i dont get it", True, "teach", "no"),
+    ("something different was taught to me in class", True, "teach", "feedback"),
+    ("my question about earlier is not fully answered", True, "teach", "feedback"),
+    ("are you sure?", True, "quick", "feedback"),
+    ("not this, about the satellite communication", True, "teach", "followup"),
     ("ok", True, "quick", "chat"),
     ("hi", False, "quick", "chat"),
     ("teach me", False, "teach", "chat"),
@@ -251,3 +258,96 @@ def test_rewriter_that_answers_instead_of_rewriting_is_ignored():
     h = [{"role": "user", "content": "what is guided transmission media"}]
     long_answer = "Guided media uses cables such as twisted pair and fibre. " * 8
     assert converse.clean_rewrite(long_answer, "teach me it", h) is None
+
+
+
+# ------------------------------------------------------------ the chat of 15 Oct, 10:53
+SAT = ["Satellites act as big microwave repeaters in the sky. They are inherently broadcast media.",
+       "Satellites have excellent error rates and can be deployed almost instantly, a major "
+       "consideration for disaster response and military communication."]
+ETHER = ["Classic Ethernet uses a bus topology: packets are broadcast over a single cable and "
+         "if two machines send at once the packets collide and each waits a random time."]
+LESSON = [
+    {"role": "user", "content": "teach me how ethernet works"},
+    {"role": "assistant", "content": "Ethernet broadcasts over one cable... [Ethernet · p1]"},
+    {"role": "user", "content": "why is it that a satellite communication is not owned by one induvidual",
+     "meant": "Why is satellite communication not owned by one individual?"},
+    {"role": "assistant", "content": "Satellites are like microwave repeaters... Does that make sense? "
+                                     "[Satellites · p1]"},
+]
+
+
+def _world(index_text):
+    index_text(A, "Satellites", SAT)
+    index_text(A, "Ethernet", ETHER)
+
+
+def _sent(fakes, kind):
+    (_, msgs), = [c for c in fakes.llm.calls if c[0] == kind]
+    return msgs
+
+
+def test_yes_it_does_moves_on_instead_of_repeating(fakes, index_text):
+    _world(index_text)
+    r = answer("ahh yes it does", mode="teach", history=LESSON, user=A)
+    assert r["intent"] == "yes" and r["decision"] in ("answer", "answer_uncertain")
+    assert fakes.llm.count("rewrite") == 0, "no guessing: 'yes it does' means understood"
+    last = _sent(fakes, "teach")[-1]["content"]
+    assert "NEXT idea" in last and "Never repeat" in last
+    assert "Satellites" in last, "stays on the satellite topic"
+    assert "satellite" in r["resolved_question"].lower()
+
+
+def test_no_explains_the_same_idea_more_simply(fakes, index_text):
+    _world(index_text)
+    r = answer("i dont get it", mode="teach", history=LESSON, user=A)
+    assert r["intent"] == "no"
+    assert "more simply" in _sent(fakes, "teach")[-1]["content"]
+
+
+def test_taught_differently_in_class_is_a_conversation_not_a_search(fakes, index_text):
+    _world(index_text)
+    r = answer("something different was taught to me in class", mode="teach", history=LESSON, user=A)
+    assert r["decision"] != "refuse" and r["answer"] != REFUSAL
+    assert r["intent"] == "feedback" and r["offer_help"], "a teacher can settle it: offer Ask a helper"
+    msgs = _sent(fakes, "feedback")
+    assert "Satellites" in msgs[-1]["content"], "re-checks the notes on the topic being discussed"
+    assert any(m["role"] == "assistant" for m in msgs), "sees its own previous reply"
+
+
+def test_my_earlier_question_means_the_most_recent_one(fakes, index_text):
+    _world(index_text)
+    r = answer("my question about earlier is not fully answered", mode="teach", history=LESSON, user=A)
+    assert r["intent"] == "feedback"
+    assert "satellite" in r["resolved_question"].lower() and "ethernet" not in r["resolved_question"].lower()
+
+
+def test_the_model_sees_its_whole_last_reply(fakes, index_text):
+    _world(index_text)
+    long_reply = "Satellites relay signals. " * 70 + "[Satellites · p1]"     # ~1.8k chars
+    hist = LESSON[:3] + [{"role": "assistant", "content": long_reply}]
+    answer("ok next", mode="teach", history=hist, user=A)
+    msgs = _sent(fakes, "teach")
+    assert any(m["content"] == long_reply for m in msgs), "last reply must not be cut, or it gets repeated"
+
+
+def test_meaning_of_earlier_messages_reaches_the_rewriter(fakes, index_text):
+    _world(index_text)
+    answer("explain it with an example", mode="quick", history=LESSON, user=A)
+    (_, msgs), = [c for c in fakes.llm.calls if c[0] == "rewrite"]
+    assert "meaning: Why is satellite communication not owned by one individual?" in msgs[-1]["content"]
+
+
+def test_teach_checklist_sits_at_the_end_and_respects_a_request_for_detail(fakes, index_text):
+    _world(index_text)
+    answer("explain satellites as broadcast media", mode="teach", user=A)
+    assert "ONE idea" in _sent(fakes, "teach")[-1]["content"].split("Tutor checklist")[1]
+    fakes.llm.calls.clear()
+    answer("explain satellites as broadcast media in detail", mode="teach", user=A)
+    assert "thorough" in _sent(fakes, "teach")[-1]["content"].split("Tutor checklist")[1]
+
+
+def test_prompts_forbid_invented_reasons():
+    from src.answer import SYSTEM_PROMPT, TEACH_PROMPT
+    for p in (SYSTEM_PROMPT, TEACH_PROMPT):
+        assert "don't give the reason" in p and "Analogies" in p

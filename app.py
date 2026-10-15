@@ -397,6 +397,7 @@ def _strip_nonempty(v: str) -> str:
 class HistoryItem(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(max_length=8000)
+    meant: str | None = Field(None, max_length=600)   # what a follow-up was understood as
 
 
 class AnswerReq(BaseModel):

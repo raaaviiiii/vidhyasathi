@@ -49,6 +49,10 @@ _GROUNDING = (
     "- If the notes only partly cover the question, answer the part they cover and say "
     "plainly, in one short sentence, what your notes don't cover. Don't fill gaps from "
     "general knowledge.\n"
+    "- Never present a reason, conclusion or example as fact unless the notes state it. If "
+    "the student asks WHY and the notes don't give the reason, say 'Your notes don't give "
+    "the reason for that' and share the closest thing they do say.\n"
+    "- Analogies are welcome for explaining, but they must agree with the facts in the notes.\n"
     "- If the notes don't cover it at all, reply with exactly: "
     "\"I don't have that in the material.\""
 )
@@ -87,6 +91,33 @@ TEACH_PROMPT = (
     "- Never mention 'passages' or 'context'; say 'your notes' if you need to.\n"
     + _GROUNDING
 )
+
+# --- Pushback: the student says the last reply was wrong / incomplete / differs from class
+FEEDBACK_PROMPT = (
+    "You are Vidhy\u0101sathi, a study assistant re-checking your previous reply because the "
+    "student pushed back: they say it was wrong, incomplete, not what they asked, or that "
+    "their class taught something different. Respond like an honest, humble tutor:\n"
+    "- Re-read the notes passages and your previous reply. Say plainly what the notes "
+    "actually state (cite the [tags]) and openly take back anything you said that the notes "
+    "don't state.\n"
+    "- If their earlier question wasn't answered, answer exactly that question now, directly, "
+    "using only the notes. If the notes don't contain the answer, say so plainly.\n"
+    "- If they were taught something different in class, don't argue: say what the notes "
+    "say, ask what they were taught, and suggest confirming with their teacher using "
+    "'Ask a helper'.\n"
+    "- Keep it short and conversational. Never mention 'passages' or 'context'."
+)
+
+# what each kind of reaction asks the tutor to do next
+DIRECTIVES = {
+    "yes": ("The student says they understood your last explanation. Acknowledge it in a few "
+            "words, then move on to the NEXT idea of this topic that you have NOT explained "
+            "yet. If the notes have nothing more on it, say so and offer a related topic from "
+            "the notes or a quick practice question."),
+    "continue": "The student wants you to keep going: teach the NEXT idea you have not covered yet.",
+    "no": ("The student did not understand your last explanation. Explain that same idea "
+           "again, more simply and in different words, with a concrete everyday example."),
+}
 
 # --- Groundedness gate: do the notes cover this (fully or partly)? ---------------
 GROUND_CHECK = (
@@ -277,7 +308,11 @@ def _clean_history(history) -> list[dict]:
             continue
         role, content = m.get("role"), m.get("content")
         if role in ("user", "assistant") and isinstance(content, str) and content.strip():
-            out.append({"role": role, "content": content[:4000]})
+            item = {"role": role, "content": content[:4000]}
+            meant = m.get("meant")
+            if role == "user" and isinstance(meant, str) and meant.strip():
+                item["meant"] = meant.strip()[:600]
+            out.append(item)
     return out[-20:]
  
  
@@ -318,11 +353,18 @@ def _doc_order(chunks: list[dict]) -> list[dict]:
  
  
 def _hist_for_model(history: list[dict], turns: int = 6) -> list[dict]:
-    """Recent conversation for the answering model, kept short so the notes fit."""
+    """Recent conversation for the answering model. The LAST reply is kept (almost) whole,
+    so the model knows exactly what it already said and doesn't say it again; older
+    turns are shortened so the notes still fit."""
+    recent = history[-turns:]
+    last_bot = max((i for i, m in enumerate(recent) if m["role"] == "assistant"), default=-1)
     out = []
-    for m in history[-turns:]:
-        limit = 700 if m["role"] == "assistant" else 400
+    for i, m in enumerate(recent):
+        limit = 2000 if i == last_bot else (600 if m["role"] == "assistant" else 400)
         c = m["content"] if len(m["content"]) <= limit else m["content"][:limit] + " \u2026"
+        meant = m.get("meant")
+        if m["role"] == "user" and meant and meant != m["content"]:
+            c += f"\n(meaning: {meant})"
         out.append({"role": m["role"], "content": c})
     return out
 
@@ -429,7 +471,7 @@ def _reply(text: str, decision: str, **extra) -> dict:
     out = {"answer": text, "raw_answer": text, "decision": decision, "grounded": False,
            "offer_help": False, "caveat": "", "web_used": False, "web_sources": [],
            "top_score": 0.0, "weak": False, "mode": "conversation", "sources": [],
-           "resolved_question": None, "suggestions": []}
+           "resolved_question": None, "suggestions": [], "intent": "chat"}
     out.update(extra)
     return out
 
@@ -439,6 +481,39 @@ def _chat(question: str, history: list[dict], user: str | None, hint: str = "") 
     raw = call_llm(converse.chat_messages(question, history, user, hint)).strip()
     raw = _NON_WEB_TAG.sub("", raw).strip() or "Hi! Ask me anything from your notes."
     return _reply(raw, "chat")
+
+
+_DETAIL_ASK = ("detail", "each", "every", "all the", "everything", "fully", "thorough",
+               "in depth", "elaborate", "whole")
+
+
+def _checklist(mode: str, kind: str, question: str) -> str:
+    """Instructions repeated at the END of the message, where a small model follows
+    them best: what to do now, stay grounded, and never repeat earlier explanations."""
+    do = DIRECTIVES.get(kind, "")
+    if mode == "teach":
+        wants_detail = any(w in question.lower() for w in _DETAIL_ASK)
+        size = ("The student asked for detail: be thorough but organised." if wants_detail
+                else "Teach only the next ONE idea, in under about 150 words.")
+        return (f"(Tutor checklist: {do + ' ' if do else ''}{size} Use only what the notes "
+                "say and cite their [tags]. Never repeat an explanation you already gave "
+                "earlier in this conversation; build on it. End with one short question.)")
+    return (f"(Checklist: {do + ' ' if do else ''}Answer from the notes only and cite their "
+            "[tags]. If the notes don't state something, such as a reason, say so instead of "
+            "guessing. Don't repeat what you already told the student.)")
+
+
+def _finish(raw, decision, question, query, kind, hits, top_score, mode_label, grounded):
+    """Result for a reply that skips the normal answer path (pushback)."""
+    return {
+        "answer": raw, "raw_answer": raw, "decision": decision, "grounded": grounded,
+        "offer_help": True, "caveat": "", "web_used": False, "web_sources": [],
+        "top_score": top_score, "weak": True, "mode": mode_label,
+        "resolved_question": query if query != question else None, "intent": kind,
+        "suggestions": [],
+        "sources": [{"source": h["source"], "loc": h["loc"], "score": h["score"],
+                     "ocr": h["ocr"]} for h in hits],
+    }
 
 
 def answer(question: str, mode: str = "quick", history: list[dict] | None = None,
@@ -452,7 +527,12 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
     if kind == "chat":
         return _chat(question, hist, user)
     query = question
-    if kind == "followup":
+    if kind in ("yes", "no", "continue", "feedback"):
+        # a reaction to the last reply: stay on the topic the student was asking about
+        query = converse.last_topic(hist) or converse.window_query(question, hist)
+        if not count(user):
+            return _chat(question, hist, user)
+    elif kind == "followup":
         query = _resolve(question, hist)
         if query == converse.CHAT:
             return _chat(question, hist, user)
@@ -477,7 +557,19 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
 
     # 3. answer
     asked = f"Student's message: {question}" + (
-        f"\n(What they mean: {query})" if query != question else "")
+        f"\n(What they mean: {query})" if query != question and kind not in DIRECTIVES
+        and kind != "feedback" else "")
+    if kind == "feedback":
+        # pushback: re-check against the notes and own up to anything unsupported — even
+        # when the notes are thin, this is a conversation, not a search
+        raw = call_llm([{"role": "system", "content": FEEDBACK_PROMPT}, *_hist_for_model(hist),
+                        {"role": "user", "content":
+                            f"Notes passages about what they asked earlier ({query}):\n"
+                            f"{context or '(nothing relevant in the notes)'}\n\n{asked}"}])
+        return _finish(raw, "answer_uncertain", question, query, kind, hits, top_score,
+                       mode_label, grounded)
+    if kind in DIRECTIVES and not grounded and hits:
+        grounded = True                     # the lesson topic was found before; keep going
     if not grounded:
         raw = REFUSAL
         decision = "refuse"
@@ -491,7 +583,9 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
     else:
         system = TEACH_PROMPT if mode == "teach" else SYSTEM_PROMPT
         messages = [{"role": "system", "content": system}, *_hist_for_model(hist)]
-        messages.append({"role": "user", "content": f"Notes passages:\n{context}\n\n{asked}"})
+        messages.append({"role": "user", "content":
+                         f"Notes passages:\n{context}\n\n{asked}\n\n"
+                         + _checklist(mode, kind, question)})
         raw = call_llm(messages)
         if _is_refusal(raw):
             decision = "refuse"
@@ -546,6 +640,7 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
         "weak": decision != "answer",
         "mode": mode_label,
         "resolved_question": query if query != question else None,
+        "intent": kind,
         "suggestions": converse.suggestions(user, hits) if decision == "refuse" else [],
         "sources": ([{"source": w["source"], "loc": "", "url": w["url"], "score": None,
                       "ocr": False} for w in web_sources] if web_used else
