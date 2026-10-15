@@ -18,7 +18,12 @@ export const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const MARKED_SRC = fs.readFileSync(
   path.join(path.dirname(require.resolve('marked')), 'marked.umd.js'), 'utf8');
 
-export const USER = { vs_user: 'Asha Kumar', vs_email: 'asha@x.com' };
+// A signed-in session: the server identifies the student from the bearer token,
+// never from a client-supplied email.
+export const USER = { vs_user: 'Asha Kumar', vs_email: 'asha@x.com', vs_token: 'tok-asha' };
+export const AUTH = 'Bearer tok-asha';
+/** The Authorization header a recorded fetch call carried. */
+export function authOf(call) { const hd = (call && call.init && call.init.headers) || {}; return hd.Authorization || hd.authorization; }
 
 /** Build an HTTP-ish response object for route handlers. */
 export function resp(status, json) { return { __resp: true, status, json }; }
@@ -36,8 +41,9 @@ export const DEFAULT_ROUTES = {
   '/api/material': { docs: [] },
   '/api/material/delete': { ok: true },
   '/api/upload': { ok: true, indexed: true, name: 'f.txt', chunks: 3 },
-  '/api/signup': { ok: true, name: 'Asha Kumar', email: 'asha@x.com' },
-  '/api/login': { ok: true, name: 'Asha Kumar', email: 'asha@x.com' },
+  '/api/signup': { ok: true, name: 'Asha Kumar', email: 'asha@x.com', token: 'tok-asha' },
+  '/api/login': { ok: true, name: 'Asha Kumar', email: 'asha@x.com', token: 'tok-asha' },
+  '/api/logout': { ok: true },
   '/api/account/password': { ok: true },
   '/api/account/delete': { ok: true },
 };

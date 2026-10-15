@@ -336,7 +336,7 @@ def change_password(r: PasswordReq, u: Student = Depends(current_user)):
     with closing(_db()) as c:
         row = c.execute("SELECT pw,salt FROM users WHERE email=?", (u.email,)).fetchone()
         if not row or _hash(r.old_password, row[1]) != row[0]:
-            return _err(401, "Current password is wrong.")
+            return _err(403, "Current password is wrong.")
         salt = secrets.token_hex(8)
         c.execute("UPDATE users SET pw=?, salt=? WHERE email=?",
                   (_hash(r.new_password, salt), salt, u.email))
@@ -353,7 +353,7 @@ def delete_account(r: DeleteAccountReq, u: Student = Depends(current_user)):
     with closing(_db()) as c:
         row = c.execute("SELECT pw,salt FROM users WHERE email=?", (u.email,)).fetchone()
         if not row or _hash(r.password, row[1]) != row[0]:
-            return _err(401, "Wrong password.")
+            return _err(403, "Wrong password.")
     delete_user(u.email)                       # chunks first: if Qdrant is down, keep the account
     shutil.rmtree(_user_dir(u.email), ignore_errors=True)
     with closing(_db()) as c:

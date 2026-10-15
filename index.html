@@ -38,7 +38,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .vdiv i{flex:1;height:1px;background:var(--hair2);width:40px}
 .vdiv b{width:5px;height:5px;background:var(--gold);transform:rotate(45deg)}
 #login .trans{font-family:"Cormorant Garamond",serif;font-style:italic;font-weight:500;font-size:18px;color:#ccb88e}
-.card{width:388px;margin-top:10px;background:var(--raised);border:1px solid var(--hair2);border-radius:22px;
+.card{width:388px;max-width:calc(100vw - 32px);margin-top:10px;background:var(--raised);border:1px solid var(--hair2);border-radius:22px;
   padding:26px;box-shadow:0 20px 50px -10px rgba(0,0,0,.5);position:relative}
 .card::before{content:"";position:absolute;top:0;left:0;right:0;height:1.5px;border-radius:22px 22px 0 0;
   background:linear-gradient(90deg,transparent,rgba(244,216,120,.5),transparent)}
@@ -80,12 +80,15 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .wmk{position:absolute;bottom:78px;left:150px;width:180px;opacity:.05;pointer-events:none}
 .footer{margin-top:auto;display:flex;align-items:center;justify-content:space-between;
   background:rgba(37,30,21,.55);border:1px solid var(--hair);border-radius:14px;padding:12px 13px;cursor:pointer}
+.footer.on{border-color:rgba(232,162,74,.55);background:rgba(217,180,90,.1)}
 .footer .l{display:flex;align-items:center;gap:11px;color:#e6ddca;font-size:13px;font-weight:500}
 
 .main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;overflow:hidden}
 .bgm{position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:680px;opacity:.11;pointer-events:none;animation:spin 140s linear infinite}
 .topbar{display:flex;justify-content:flex-end;align-items:center;gap:12px;padding:20px 40px 12px;z-index:2}
 .pill{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:var(--raised);border:1px solid rgba(217,180,90,.26);font-size:13px;color:var(--t1)}
+.dot.warn{background:var(--saffron);box-shadow:0 0 8px 1px rgba(232,162,74,.6)}
+.dot.down{background:var(--vermillion);box-shadow:0 0 8px 1px rgba(207,81,56,.6);animation:none}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--emerald);box-shadow:0 0 8px 1px rgba(94,203,131,.7);animation:pulse 2.2s ease-in-out infinite}
 .acct{display:flex;align-items:center;gap:9px;padding:5px 13px 5px 5px;border-radius:999px;background:var(--surface);border:1px solid rgba(217,180,90,.22);cursor:pointer}
 .acct .av{position:relative;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13.5px;color:#2a1a06;
@@ -235,6 +238,44 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .bubble th,.bubble td{border:1px solid var(--hair);padding:6px 10px;text-align:left}
 .bubble th{background:rgba(217,180,90,.08);color:var(--gold2)}
 .bubble hr{border:none;border-top:1px solid var(--hair);margin:12px 0}
+
+/* keyboard focus */
+.nav a:focus-visible,.footer:focus-visible,.acct:focus-visible,.chip:focus-visible,.starter:focus-visible,.toggle:focus-visible,
+.send:focus-visible,.btn:focus-visible,.newchat:focus-visible,.recent .r:focus-visible,.drop:focus-visible,.docdel:focus-visible,.menubtn:focus-visible{outline:2px solid var(--saffron2);outline-offset:2px}
+.menubtn{display:none;margin-right:auto;width:40px;height:40px;border-radius:12px;border:1px solid var(--hair);background:var(--surface);cursor:pointer;align-items:center;justify-content:center}
+.scrim{display:none}
+
+/* phone width */
+@media (max-width: 760px){
+  .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:30;width:84vw;max-width:300px;flex-basis:auto;background:var(--base2);transform:translateX(-102%);transition:transform .25s ease;box-shadow:0 0 40px rgba(0,0,0,.6)}
+  body.nav-open .sidebar{transform:none}
+  body.nav-open .scrim{display:block;position:fixed;inset:0;z-index:25;background:rgba(8,6,4,.55)}
+  .menubtn{display:flex}
+  .topbar{padding:12px 14px 8px;gap:8px}
+  .acct .nm{display:none}
+  .pill{padding:6px 10px;font-size:12px}
+  .stage{padding:0 14px}
+  .hero{gap:16px}
+  .hero h1{font-size:34px}
+  .quote .sk{font-size:19px}
+  .bubble{max-width:100%;font-size:14.5px;padding:13px 14px}
+  .composer{width:auto;margin:0 10px 12px;padding:14px 12px 11px 14px;border-radius:18px}
+  .composer textarea{font-size:16px}
+  .cbar{flex-wrap:wrap;gap:8px}
+  .chip{padding:7px 10px;font-size:12.5px}
+  .csep{display:none}
+  .starters{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;padding:0 10px;margin-bottom:14px}
+  .starter{flex:0 0 auto}
+  .bgm{width:520px}
+  #login{overflow-y:auto;justify-content:flex-start;padding:28px 0}
+  #login .lcorner,#login .frieze{display:none}
+  #login .wordmark{font-size:30px}
+  .modal{padding:20px;border-radius:16px}
+  .trow{flex-wrap:wrap;gap:8px}
+}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
 </style>
 </head>
 <body>
@@ -251,12 +292,12 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
   <div class="vdiv"><i></i><b></b><i></i></div>
   <div class="trans">“lead me from darkness to light”</div>
   <div class="card">
-    <div class="fld" id="authName"><label>NAME</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M3.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anName" placeholder="Your name" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
-    <div class="fld"><label>EMAIL</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M2.6 4.6 8 8.6 13.4 4.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anEmail" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
-    <div class="fld"><label>PASSWORD</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="6.8" width="10" height="7" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5 6.8V5.4a3 3 0 0 1 6 0v1.4" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anPass" type="password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
-    <div id="authErr" style="color:#e79178;font-size:12.5px;margin:-4px 0 12px;display:none"></div>
+    <div class="fld" id="authName"><label for="anName">NAME</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M3.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anName" placeholder="Your name" autocomplete="name" maxlength="80" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
+    <div class="fld"><label for="anEmail">EMAIL</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M2.6 4.6 8 8.6 13.4 4.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anEmail" type="email" placeholder="you@example.com" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
+    <div class="fld"><label for="anPass">PASSWORD</label><div class="ibox"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="6.8" width="10" height="7" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5 6.8V5.4a3 3 0 0 1 6 0v1.4" fill="none" stroke="#d9b45a" stroke-width="1.1"/></svg><input id="anPass" type="password" autocomplete="new-password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" onkeydown="if(event.key==='Enter')doAuth()"/></div></div>
+    <div id="authErr" role="alert" style="color:#e79178;font-size:12.5px;margin:-4px 0 12px;display:none"></div>
     <button class="enter" onclick="doAuth()"><span id="authBtnText">Create account</span> <svg width="15" height="15" viewBox="0 0 16 16"><path d="M3 8h9M8.5 4.5 12.5 8l-4 3.5" fill="none" stroke="#291904" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    <div class="signup" id="authToggle">Already have an account?  <b onclick="toggleAuth()">Sign in</b></div>
+    <div class="signup" id="authToggle">Already have an account?  <b role="button" tabindex="0" onclick="toggleAuth()">Sign in</b></div>
   </div>
 </div>
 
@@ -266,22 +307,23 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
     <div class="brand"><div id="sbMark" style="width:30px;height:31px"></div><div><div class="wm">Vidhyāsathi</div><div class="tg">KNOWLEDGE COMPANION</div></div></div>
     <div class="bdiv"><i></i><b></b><i></i></div>
     <button class="newchat" onclick="newChat()"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="#2a1a06" stroke-width="2" stroke-linecap="round"/></svg>New chat</button>
-    <nav class="nav">
-      <a class="on"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3.6C3 3.1 3.4 2.8 3.9 2.9L12.3 4.1C12.7 4.2 13 4.5 13 5V11.6C13 12.1 12.6 12.4 12.1 12.3L3.9 11.1V3.6Z" fill="none" stroke="#e8a24a" stroke-width="1.1" stroke-linejoin="round"/><path d="M5.4 6.2h4.8M5.4 8.4h3.4" stroke="#e8a24a" stroke-width="1.1" stroke-linecap="round"/></svg>Current chat</a>
-      <a><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round"/></svg>Recent chats</a>
-      <a><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3.4" y="2.4" width="9.2" height="11.2" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5.6 6h4.8M5.6 8.3h4.8M5.6 10.6h3.4" stroke="#d9b45a" stroke-width="1.1"/></svg>My material</a>
-      <a><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Practice sets</a>
-      <a><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M6 10l-.6 3.6L8 12l2.6 1.6L10 10" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linejoin="round"/></svg>Trust &amp; citations</a>
+    <nav class="nav" aria-label="Main">
+      <a class="on" href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3.6C3 3.1 3.4 2.8 3.9 2.9L12.3 4.1C12.7 4.2 13 4.5 13 5V11.6C13 12.1 12.6 12.4 12.1 12.3L3.9 11.1V3.6Z" fill="none" stroke="#e8a24a" stroke-width="1.1" stroke-linejoin="round"/><path d="M5.4 6.2h4.8M5.4 8.4h3.4" stroke="#e8a24a" stroke-width="1.1" stroke-linecap="round"/></svg>Current chat</a>
+      <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M8 4.8V8l2.2 1.4" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round"/></svg>Recent chats</a>
+      <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3.4" y="2.4" width="9.2" height="11.2" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5.6 6h4.8M5.6 8.3h4.8M5.6 10.6h3.4" stroke="#d9b45a" stroke-width="1.1"/></svg>My material</a>
+      <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Practice sets</a>
+      <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M6 10l-.6 3.6L8 12l2.6 1.6L10 10" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linejoin="round"/></svg>Trust &amp; citations</a>
     </nav>
     <div class="wmk" id="sbWmk"></div>
-    <div class="footer"><div class="l"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="2.7" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M9 2.6V4.4M9 13.6V15.4M2.6 9H4.4M13.6 9H15.4M4.5 4.5l1.3 1.3M12.2 12.2l1.3 1.3M13.5 4.5l-1.3 1.3M5.8 12.2l-1.3 1.3" stroke="#d9b45a" stroke-width="1.1" stroke-linecap="round"/></svg>Settings</div><svg width="13" height="13" viewBox="0 0 14 14"><path d="M5 3l4 4-4 4" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    <div class="footer" role="button" tabindex="0" aria-label="Settings"><div class="l"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="2.7" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M9 2.6V4.4M9 13.6V15.4M2.6 9H4.4M13.6 9H15.4M4.5 4.5l1.3 1.3M12.2 12.2l1.3 1.3M13.5 4.5l-1.3 1.3M5.8 12.2l-1.3 1.3" stroke="#d9b45a" stroke-width="1.1" stroke-linecap="round"/></svg>Settings</div><svg width="13" height="13" viewBox="0 0 14 14"><path d="M5 3l4 4-4 4" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
   </aside>
 
   <main class="main">
     <div class="bgm" id="bgMandala"></div>
     <header class="topbar">
-      <div class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Active</span></div>
-      <div class="acct" id="acctChip" onclick="toggleAcct(event)"><div class="av">R<span class="pres"></span></div><span class="nm">Ravi</span>
+      <button class="menubtn" type="button" aria-label="Open menu" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="#d9b45a" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <div class="pill" aria-live="polite"><span class="dot" id="statusDot"></span><span id="statusText">Active</span></div>
+      <div class="acct" id="acctChip" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu" onclick="toggleAcct(event)"><div class="av">R<span class="pres"></span></div><span class="nm">Ravi</span>
         <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round"/></svg></div>
     </header>
 
@@ -295,29 +337,30 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
     </div>
 
     <div class="composer">
-      <textarea id="input" rows="1" placeholder="Ask from your notes…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" oninput="auto(this)"></textarea>
+      <textarea id="input" rows="1" placeholder="Ask from your notes…" aria-label="Ask from your notes" maxlength="4000" onkeydown="onComposerKey(event)" oninput="auto(this)"></textarea>
       <div class="cbar">
         <div class="cleft">
           <button class="chip on" data-mode="quick" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 1.5 9.2 6.4 14 8 9.2 9.6 8 14.5 6.8 9.6 2 8 6.8 6.4Z" fill="#e8a24a"/></svg>Quick Answer</button>
           <button class="chip" data-mode="teach" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach Me</button>
           <button class="chip" data-mode="exam" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3.2" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M4.8 8 7 10.2l4.4-4.8" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Exam &amp; Practice</button>
           <span class="csep"></span>
-          <div class="toggle" id="webToggle" onclick="toggleWeb(this)"><span class="track"><b></b></span>Web fallback</div>
+          <div class="toggle" id="webToggle" role="switch" tabindex="0" aria-pressed="false" aria-label="Web fallback" onclick="toggleWeb(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWeb(this)}"><span class="track"><b></b></span>Web fallback</div>
         </div>
-        <button class="send" onclick="send()"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 16.5V6M6.5 10.5 11 5.8l4.5 4.7" fill="none" stroke="#231604" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="send" type="button" aria-label="Send" onclick="send()"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 16.5V6M6.5 10.5 11 5.8l4.5 4.7" fill="none" stroke="#231604" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
     </div>
     <div class="starters" id="starters">
-      <div class="starter" onclick="starter('Explain a concept from my notes')"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5 9.2 6.4 14 8 9.2 9.6 8 14.5 6.8 9.6 2 8 6.8 6.4Z" fill="#d9b45a"/></svg>Explain a concept</div>
-      <div class="starter" onclick="setModeByName('exam');document.getElementById('input').value='';document.getElementById('input').focus()"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Make a practice set</div>
-      <div class="starter" onclick="openGrade()"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M6 10l-.6 3.4L8 12l2.6 1.4L10 10" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Grade my answer</div>
-      <div class="starter" onclick="setModeByName('teach');document.getElementById('input').focus()"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach me step by step</div>
+      <div class="starter" role="button" tabindex="0" onclick="starter('Explain a concept from my notes')"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1.5 9.2 6.4 14 8 9.2 9.6 8 14.5 6.8 9.6 2 8 6.8 6.4Z" fill="#d9b45a"/></svg>Explain a concept</div>
+      <div class="starter" role="button" tabindex="0" onclick="setModeByName('exam');document.getElementById('input').value='';document.getElementById('input').focus()"><svg width="14" height="14" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Make a practice set</div>
+      <div class="starter" role="button" tabindex="0" onclick="openGrade()"><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M6 10l-.6 3.4L8 12l2.6 1.4L10 10" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Grade my answer</div>
+      <div class="starter" role="button" tabindex="0" onclick="setModeByName('teach');document.getElementById('input').focus()"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach me step by step</div>
     </div>
   </main>
 </div>
 
-<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
-<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="scrim" onclick="closeSidebar()"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 const API = location.origin;   // same-origin when served by app.py
 let mode='quick', history=[], busy=false;
@@ -367,291 +410,495 @@ document.getElementById('heroEmblem').innerHTML=lotus(116);
 document.getElementById('heroRing').innerHTML=ring();
 document.getElementById('bgMandala').innerHTML=mandala(680,1);
 
+/* ---------- safety helpers ---------- */
+// Everything that did not come from this file (model output, web pages, file names,
+// the student's own typing, stored chats) is either escaped, set via textContent, or
+// passed through sanitize() — never inserted as raw HTML.
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function safeUrl(u){try{const x=new URL(String(u||''),location.href);return /^https?:$/.test(x.protocol)?x.href:'';}catch(e){return '';}}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+const SAFE_TAGS=new Set(['P','BR','STRONG','B','EM','I','U','DEL','S','UL','OL','LI','H1','H2','H3','H4','H5','H6','CODE','PRE','BLOCKQUOTE','TABLE','THEAD','TBODY','TR','TH','TD','HR','A','SPAN','DIV','SUP','SUB']);
+const DROP_TAGS=/^(SCRIPT|STYLE|IFRAME|FRAME|OBJECT|EMBED|SVG|MATH|TEMPLATE|NOSCRIPT|TEXTAREA|SELECT|OPTION|INPUT|FORM|BUTTON|IMG|PICTURE|SOURCE|VIDEO|AUDIO|TRACK|LINK|META|BASE|TITLE)$/;
+function sanitizeInto(container,html){
+  const t=document.createElement('template');t.innerHTML=html;
+  (function walk(node){
+    for(const c of [...node.children]){
+      if(!SAFE_TAGS.has(c.tagName)){
+        if(DROP_TAGS.test(c.tagName)){c.remove();continue;}
+        walk(c);c.replaceWith(...c.childNodes);continue;
+      }
+      for(const a of [...c.attributes]){
+        const n=a.name.toLowerCase();
+        if(n==='href'&&c.tagName==='A'){const u=safeUrl(a.value);if(u){c.setAttribute('href',u);c.setAttribute('target','_blank');c.setAttribute('rel','noopener noreferrer');}else c.removeAttribute('href');continue;}
+        if(n==='class'&&/^[\w\- ]*$/.test(a.value))continue;
+        if(n==='align'&&(c.tagName==='TH'||c.tagName==='TD'))continue;
+        c.removeAttribute(a.name);
+      }
+      walk(c);
+    }
+  })(t.content);
+  container.replaceChildren(t.content);
+  return container;
+}
+// Citation tags always look like [source · locator]; plain brackets ([0, b-1],
+// arr[i]) are left alone, and nothing inside code, links or math is touched.
+const CITE_RE=/\[([^\[\]\n]*·[^\[\]\n]*)\]/g;
+function gildInto(root){
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);const nodes=[];
+  while(w.nextNode())nodes.push(w.currentNode);
+  for(const n of nodes){
+    if(n.parentElement&&n.parentElement.closest('code,pre,a,.cite'))continue;
+    const s=n.nodeValue;CITE_RE.lastIndex=0;if(!CITE_RE.test(s))continue;CITE_RE.lastIndex=0;
+    const frag=document.createDocumentFragment();let last=0,m;
+    while((m=CITE_RE.exec(s))){
+      frag.append(s.slice(last,m.index));
+      const inner=m[1].trim(),web=/^web\s*·/i.test(inner);
+      frag.append(el('span','cite'+(web?' web':''),(web?'🌐 ':'')+inner));
+      last=m.index+m[0].length;
+    }
+    frag.append(s.slice(last));n.replaceWith(frag);
+  }
+}
+const MATH_RE=/\$\$[\s\S]+?\$\$|\$[^\$\n]+?\$/g;
+/** Markdown + citations + math into `container`, safely. */
+function renderMd(container,text){
+  text=String(text??'');
+  const math=[];
+  const withPh=text.replace(MATH_RE,m=>{math.push(m);return '⁣M'+(math.length-1)+'⁣';});
+  let html;
+  if(window.marked){try{html=marked.parse(withPh,{breaks:true,gfm:true});}catch(e){html=null;}}
+  if(html==null)html=esc(withPh).replace(/\n/g,'<br>');      // offline: plain, escaped text
+  sanitizeInto(container,html);
+  gildInto(container);
+  if(math.length){                                              // math back in, as TEXT
+    const w=document.createTreeWalker(container,NodeFilter.SHOW_TEXT);const nodes=[];
+    while(w.nextNode())nodes.push(w.currentNode);
+    for(const n of nodes)if(n.nodeValue.includes('⁣'))n.nodeValue=n.nodeValue.replace(/⁣M(\d+)⁣/g,(m,i)=>math[+i]??'');
+  }
+  return container;
+}
+function typeset(node){ if(window.renderMathInElement){try{renderMathInElement(node,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false,trust:false});}catch(e){}} }
+
+/* ---------- state ---------- */
+let USER_EMAIL='', USER_TOKEN='';
+let chatLog=[];          // the open chat as data (replayed on restore — never stored HTML)
+let chatId=null;         // its id in Recent, once saved
+let chatGen=0;           // bumps on New chat / restore so a late answer can't land in the wrong chat
+let suppressSave=false;  // set on sign-out so beforeunload can't write the chat back
+let baseNav=0;           // nav item to highlight when no panel is open
+
+/* ---------- API ---------- */
+class ApiError extends Error{constructor(status,msg){super(msg);this.status=status;}}
+function statusMessage(s){
+  if(s===413)return 'That file is too large to upload.';
+  if(s===429)return 'Too many attempts. Please wait a few minutes and try again.';
+  if(s===503)return "A service Vidhyāsathi needs isn't running right now.";
+  if(s===404)return 'Not found.';
+  if(s>=500)return 'The server hit an error. Please try again in a moment.';
+  return 'Request failed ('+s+').';
+}
+async function api(path,{method='POST',body,form,auth=true}={}){
+  const headers={};
+  if(auth&&USER_TOKEN)headers['Authorization']='Bearer '+USER_TOKEN;
+  const init={method,headers};
+  if(form)init.body=form;
+  else if(body!==undefined){headers['Content-Type']='application/json';init.body=JSON.stringify(body);}
+  let res;
+  try{res=await fetch(API+path,init);}
+  catch(e){setStatus('down');throw new ApiError(0,'Vidhyāsathi is not reachable — the server or the share link may be down. Check your connection and try again.');}
+  let data=null;try{data=await res.json();}catch(e){}
+  const msg=(data&&(data.error||(typeof data.detail==='string'&&data.detail)))||statusMessage(res.status);
+  if(res.status===401&&auth){sessionExpired(msg);throw new ApiError(401,msg);}
+  if(!res.ok){setStatus(res.status===503?'degraded':'ok');throw new ApiError(res.status,msg);}
+  setStatus('ok');
+  if(data&&data.ok===false&&!('indexed' in data))throw new ApiError(res.status,data.error||'Something went wrong.');
+  return data||{};
+}
+const post=(path,body)=>api(path,{body});
+function setStatus(s){
+  const d=document.getElementById('statusDot'),t=document.getElementById('statusText');if(!d||!t)return;
+  const map={ok:['Active',''],degraded:['Service offline','warn'],down:['Unreachable','down']};
+  const [label,cls]=map[s]||map.ok;t.textContent=label;d.className='dot'+(cls?' '+cls:'');
+}
+
 /* ---------- flow ---------- */
 function enter(){
   document.getElementById('login').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  // re-trigger bloom + stagger the hero
   const em=document.getElementById('heroEmblem'); em.style.animation='none'; void em.offsetWidth; em.style.animation='';
   const hero=document.getElementById('hero'); [...hero.children].forEach((c,i)=>{if(c!==em.parentElement){c.style.animation=`rise .7s ease-out ${.5+i*.15}s both`}});
   document.getElementById('input').focus();
 }
 function auto(t){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,160)+'px'}
-function setMode(btn){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));btn.classList.add('on');mode=btn.dataset.mode;localStorage.setItem('vs_mode',mode)}
-function setModeByName(m){document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.mode===m));mode=m;localStorage.setItem('vs_mode',m)}
-function toggleWeb(el){el.classList.toggle('on');localStorage.setItem('vs_web',el.classList.contains('on')?'1':'0')}
-function starter(t){document.getElementById('input').value=t;auto(document.getElementById('input'));document.getElementById('input').focus()}
-function newChat(){saveCurrentChat();history=[];document.getElementById('transcript').innerHTML='';document.getElementById('transcript').classList.add('hidden');document.getElementById('hero').classList.remove('hidden');setActiveNav(0)}
-
-function gild(text){
-  // escape then replace [tags] with gilded pills; [web · ...] gets the web style
-  let esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return esc.replace(/\[([^\]]+)\]/g,(m,inner)=>{
-    const web=/^web\b/i.test(inner.trim());
-    return `<span class="cite${web?' web':''}">${web?'🌐 ':''}${inner}</span>`;
-  });
+function onComposerKey(e){
+  if(e.isComposing||e.keyCode===229)return;       // Malayalam/Hindi IME is choosing a word
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
 }
-function mdGild(text){
- text=String(text);
- const math=[];
- text=text.replace(/\$\$[\s\S]+?\$\$|\$[^\$\n]+?\$/g,m=>{math.push(m);return '@@M'+(math.length-1)+'@@';});
- let html; try{html=window.marked?marked.parse(text,{breaks:true,gfm:true}):text;}catch(e){html=text;}
- html=html.replace(/@@M(\d+)@@/g,(m,i)=>math[+i]);
- html=html.replace(/\[([^\]\[]+)\]/g,(m,inner)=>{const web=/^web\b/i.test(inner.trim());return '<span class="cite'+(web?' web':'')+'">'+(web?'\ud83c\udf10 ':'')+inner+'</span>';});
- return html;
+function chipsFor(m){document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.mode===m));mode=m;}
+// composer chips change the mode for this session only; the saved default lives in Settings
+function setMode(btn){chipsFor(btn.dataset.mode);}
+function setModeByName(m){chipsFor(m);}
+function toggleWeb(t){t.classList.toggle('on');t.setAttribute('aria-pressed',t.classList.contains('on'));}
+function starter(t){const i=document.getElementById('input');i.value=t;auto(i);i.focus()}
+function resetTranscript(){
+  const t=document.getElementById('transcript');t.replaceChildren();t.classList.add('hidden');
+  document.getElementById('hero').classList.remove('hidden');
+}
+function newChat(){
+  saveCurrentChat();
+  chatGen++;busy=false;history=[];chatLog=[];chatId=null;
+  resetTranscript();baseNav=0;setActiveNav(0);closeSidebar();
 }
 function scrollDown(){const s=document.getElementById('stage');s.scrollTop=s.scrollHeight}
-
-function addUser(text){
-  const t=document.getElementById('transcript');
-  const d=document.createElement('div');d.className='msg user';
-  d.innerHTML=`<div class="who">YOU</div><div class="bubble">${text.replace(/</g,'&lt;')}</div>`;
-  t.appendChild(d);scrollDown();
-}
-function loader(){
-  const t=document.getElementById('transcript');
-  const d=document.createElement('div');d.className='msg bot';d.id='loader';
-  const lines=['drawing on your notes…','checking what the material holds…','composing carefully…'];
-  d.innerHTML=`<div class="loading">${kolamSVG()}<div class="lt">${lines[Math.floor(Math.random()*lines.length)]}</div></div>`;
-  t.appendChild(d);scrollDown();
-}
 function reveal(){document.getElementById('hero').classList.add('hidden');document.getElementById('transcript').classList.remove('hidden')}
 
-async function send(){
-  const inp=document.getElementById('input');const q=inp.value.trim();
-  if(!q||busy)return; busy=true;
-  reveal(); addUser(q); inp.value='';auto(inp);
-  ripple();
-  loader();
-  try{
-    if(mode==='exam'){
-      const r=await post('/api/exam',{topic:q,n:5}); renderExam(r);
-    }else{
-      const web=document.getElementById('webToggle').classList.contains('on');
-      const r=await post('/api/answer',{question:q,mode,web,history:mode==='teach'?history:[]});
-      renderAnswer(r);
-      if(mode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:r.answer});}
-    }
-  }catch(e){ renderError(e.message); }
-  busy=false;
+/* ---------- transcript (rendered from data) ---------- */
+function msg(kind,whoText){const d=el('div','msg '+kind);d.append(el('div','who',whoText));return d;}
+function pushEntry(e,live){
+  if(live)chatLog.push(e);
+  const t=document.getElementById('transcript');
+  let node;
+  if(e.t==='user'){node=msg('user',e.who||'YOU');node.append(el('div','bubble',e.text));}
+  else if(e.t==='answer')node=answerNode(e.r);
+  else if(e.t==='exam')node=examNode(e.r);
+  else if(e.t==='grade')node=gradeNode(e.r);
+  else if(e.t==='html'){node=el('div');sanitizeInto(node,e.html);}   // chats saved by older versions
+  else node=errorNode(e.msg);
+  t.appendChild(node);
+  if(live){typeset(node);scrollDown();}
+  return node;
 }
-async function post(path,body){
-  const res=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,user:USER_EMAIL})});
-  if(!res.ok)throw new Error('Backend error ('+res.status+'). Is app.py running?');
-  return res.json();
+function addUser(text,who){pushEntry({t:'user',text,who},true);}
+function loader(){
+  const t=document.getElementById('transcript');
+  const d=el('div','msg bot');d.id='loader';
+  const lines=['drawing on your notes…','checking what the material holds…','composing carefully…'];
+  d.innerHTML=`<div class="loading">${kolamSVG()}<div class="lt"></div></div>`;
+  d.querySelector('.lt').textContent=lines[Math.floor(Math.random()*lines.length)];
+  t.appendChild(d);scrollDown();
 }
 function killLoader(){const l=document.getElementById('loader');if(l)l.remove()}
 
-function renderAnswer(r){
-  killLoader();
-  const t=document.getElementById('transcript');
-  const d=document.createElement('div');
+const DECISIONS={answer:['ok','grounded'],answer_uncertain:['warn','tentative'],answer_web:['warn','from the web'],refuse:['no','not in material']};
+function answerNode(r){
   const kind=r.decision==='refuse'?'refuse':(r.decision==='answer_web'?'web':'');
-  d.className='msg bot '+kind;
-  let meta='';
-  const dm={answer:['ok','grounded'],answer_uncertain:['warn','tentative'],answer_web:['warn','from the web'],refuse:['no','not in material']};
-  const badge=dm[r.decision]||['','']; 
-  meta+=`<span class="tag ${badge[0]}">${badge[1]}</span>`;
-  if(typeof r.top_score==='number')meta+=`<span class="tag">score ${r.top_score.toFixed(2)}</span>`;
-  let extra='';
-  if(r.caveat)extra+=`<div class="note"><span class="em">↳</span> ${r.caveat.replace(/^↳\s*/,'')}</div>`;
+  const d=msg('bot'+(kind?' '+kind:''),'VIDHYĀSATHI');
+  d.append(renderMd(el('div','bubble'),r.answer));
+  const meta=el('div','meta');
+  const badge=DECISIONS[r.decision];
+  if(badge)meta.append(el('span','tag '+badge[0],badge[1]));
+  if(typeof r.top_score==='number')meta.append(el('span','tag','score '+r.top_score.toFixed(2)));
+  if(meta.childNodes.length)d.append(meta);
+  if(r.caveat){const n=el('div','note');n.append(el('span','em','↳'),document.createTextNode(' '+String(r.caveat).replace(/^↳\s*/,'')));d.append(n);}
   if(r.web_used&&r.web_sources&&r.web_sources.length){
-    const urls=r.web_sources.map(s=>`<a href="${s.url}" target="_blank">${(s.url||'').replace(/^https?:\/\//,'').slice(0,40)}</a>`).join(', ');
-    extra+=`<div class="webdisc">🌐 Not in your notes — learned from the web, verify before trusting: ${urls}</div>`;
+    const w=el('div','webdisc','🌐 Not in your notes — learned from the web, verify before trusting: ');
+    r.web_sources.forEach((s,i)=>{
+      const u=safeUrl(s.url),label=String(s.url||s.source||'').replace(/^https?:\/\//,'').slice(0,40);
+      if(i)w.append(', ');
+      if(u){const a=el('a',null,label);a.href=u;a.target='_blank';a.rel='noopener noreferrer';w.append(a);}
+      else w.append(label);
+    });
+    d.append(w);
   }
-  if(r.offer_help)extra+=`<div class="note"><span class="em">→</span> Not fully sure — you can ask a human helper.</div>`;
-  const src=(r.sources||[]).map(s=>s.source+' · '+s.loc).filter((v,i,a)=>a.indexOf(v)===i).slice(0,5).join(';  ');
-  d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">${mdGild(r.answer)}</div><div class="meta">${meta}</div>${extra}${src?`<div class="srcline">sources: ${src}</div>`:''}`;
-  t.appendChild(d);typeset(d.querySelector('.bubble'));scrollDown();
-}
-function renderExam(r){
-  killLoader();
-  const t=document.getElementById('transcript');
-  const d=document.createElement('div');d.className='msg bot';
-  if(!r.grounded){
-    d.classList.add('refuse');
-    d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">I don't have that in the material — I can't set questions on a topic that isn't in your notes.</div>`;
-  }else{
-    let items=(r.items||[]).map((it,i)=>`<div class="examq"><div class="q">Q${i+1}. ${it.q.replace(/</g,'&lt;')}</div><div class="a">${mdGild(it.a)}</div></div>`).join('');
-    if(!items)items=`<div class="a">${(r.raw||'').replace(/</g,'&lt;')}</div>`;
-    d.innerHTML=`<div class="who">PRACTICE SET · ${(r.topic||'').replace(/</g,'&lt;')}</div><div class="bubble">${items}</div>`;
+  if(r.offer_help){
+    const n=el('div','note');n.append(el('span','em','→'));
+    n.append(document.createTextNode(r.decision==='refuse'
+      ? " This isn't in your notes. Upload material that covers it, turn on Web fallback, or ask a teacher."
+      : ' Not fully sure — you can ask a human helper.'));
+    d.append(n);
   }
-  t.appendChild(d);typeset(d);scrollDown();
+  const src=[...new Set((r.sources||[]).map(s=>s.loc?`${s.source} · ${s.loc}`:String(s.source||'')).filter(Boolean))].slice(0,5).join(';  ');
+  if(src)d.append(el('div','srcline','sources: '+src));
+  return d;
 }
-function renderError(msg){
-  killLoader();
-  const t=document.getElementById('transcript');
-  const d=document.createElement('div');d.className='msg bot refuse';
-  d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">${msg}</div>`;
-  t.appendChild(d);scrollDown();
+function examNode(r){
+  const d=msg('bot','PRACTICE SET · '+(r.topic||''));
+  const b=el('div','bubble');
+  if(r.error){d.classList.add('refuse');b.textContent=r.error;}
+  else if(!r.grounded){d.classList.add('refuse');b.textContent="I don't have that in the material — I can't set questions on a topic that isn't in your notes.";}
+  else if(!(r.items||[]).length){b.textContent="I couldn't put together cited questions on that topic. Try a narrower topic from your notes.";}
+  else (r.items||[]).forEach((it,i)=>{
+    const q=el('div','examq');q.append(el('div','q',`Q${i+1}. ${it.q}`));
+    q.append(renderMd(el('div','a'),it.a));b.append(q);
+  });
+  d.append(b);return d;
 }
-function typeset(el){ if(window.renderMathInElement){try{renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});}catch(e){}} }
+function gradeNode(r){
+  const d=msg('bot'+(r.grounded?'':' refuse'),'VIDHYĀSATHI');
+  const b=el('div','bubble');
+  if(r.error)b.textContent=r.error;
+  else if(r.grounded){const h=el('b',null,'Feedback vs your notes (not a grade)');h.style.color='var(--gold2)';b.append(h,el('br'));const f=el('div');renderMd(f,r.feedback);b.append(f);}
+  else b.textContent="I don't have that in the material — I can't grade an answer on a topic that isn't in your notes.";
+  d.append(b);return d;
+}
+function errorNode(m){const d=msg('bot refuse','VIDHYĀSATHI');d.append(el('div','bubble',m));return d;}
+function renderAnswer(r){killLoader();pushEntry({t:'answer',r},true);}
+function renderExam(r){killLoader();pushEntry({t:'exam',r},true);}
+function renderError(m){killLoader();pushEntry({t:'error',msg:String(m)},true);}
+
+async function send(){
+  const inp=document.getElementById('input');const q=inp.value.trim();
+  if(!q||busy)return;
+  if(!USER_TOKEN){showLogin('Please sign in to ask questions.');return;}
+  busy=true;const gen=chatGen;
+  reveal();addUser(q);inp.value='';auto(inp);
+  ripple();loader();
+  try{
+    if(mode==='exam'){
+      const r=await post('/api/exam',{topic:q,n:5});
+      if(gen!==chatGen)return; renderExam(r);
+    }else{
+      const web=document.getElementById('webToggle').classList.contains('on');
+      const r=await post('/api/answer',{question:q,mode,web,history:mode==='teach'?history:[]});
+      if(gen!==chatGen)return;
+      renderAnswer(r);
+      if(mode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:String(r.answer||'')});}
+    }
+  }catch(e){ if(gen===chatGen&&e.status!==401)renderError(e.message); }
+  finally{ if(gen===chatGen)busy=false; }
+}
 
 /* grade panel (from "Grade my answer") */
-function openGrade(){
+async function openGrade(){
   const q=prompt('Which question are you answering?  (must be from your material)');
-  if(!q)return;
+  if(!q||!q.trim())return;
   const a=prompt('Paste your answer to be graded:');
-  if(!a)return;
-  reveal();
-  const t=document.getElementById('transcript');
-  const u=document.createElement('div');u.className='msg user';
-  u.innerHTML=`<div class="who">YOU · answer to "${q.replace(/</g,'&lt;').slice(0,60)}"</div><div class="bubble">${a.replace(/</g,'&lt;')}</div>`;
-  t.appendChild(u);loader();
-  post('/api/grade',{question:q,student_answer:a}).then(r=>{
-    killLoader();
-    const d=document.createElement('div');d.className='msg bot'+(r.grounded?'':' refuse');
-    const body=r.grounded?`<b style="color:var(--gold2)">Feedback vs your notes (not a grade)</b><br>${mdGild(r.feedback)}`:"I don't have that in the material — I can't grade an answer on a topic that isn't in your notes.";
-    d.innerHTML=`<div class="who">VIDHYĀSATHI</div><div class="bubble">${body}</div>`;
-    t.appendChild(d);typeset(d);scrollDown();
-  }).catch(e=>renderError(e.message));
+  if(!a||!a.trim())return;
+  if(!USER_TOKEN){showLogin('Please sign in first.');return;}
+  const gen=chatGen;
+  reveal();addUser(a,'YOU · answer to "'+q.slice(0,60)+'"');loader();
+  try{const r=await post('/api/grade',{question:q,student_answer:a});
+    if(gen!==chatGen)return;killLoader();pushEntry({t:'grade',r},true);}
+  catch(e){if(gen===chatGen&&e.status!==401)renderError(e.message);}
 }
 
 /* send ripple */
 function ripple(){const b=document.querySelector('.send');const r=document.createElement('span');r.className='ripple';b.appendChild(r);setTimeout(()=>r.remove(),820);}
-/* ---------- modals + features ---------- */
-function openModal(h){document.getElementById('modal').innerHTML=h;document.getElementById('overlay').classList.add('show');}
-function closeModal(){document.getElementById('overlay').classList.remove('show');}
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2800);}
+
+/* ---------- modals ---------- */
+function openModal(h,nav){document.getElementById('modal').innerHTML=h;document.getElementById('overlay').classList.add('show');setActiveNav(nav??-1);closeSidebar();}
+function closeModal(){document.getElementById('overlay').classList.remove('show');setActiveNav(baseNav);}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),3200);}
 
 function openMaterial(){
- openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>My material</h2><div class="sub">Everything Vidhy\u0101sathi grounds its answers in \u2014 upload your notes, syllabi, or past papers.</div>
- <div class="drop" id="drop" onclick="document.getElementById('file').click()"><div style="font-size:22px;color:var(--gold)">\u2913</div><div class="big">Drop a file here, or click to choose</div><div class="small">PDF, image, or text \u2014 it gets chunked, embedded, and indexed</div></div>
- <input id="file" type="file" style="display:none" onchange="doUpload(this.files[0])"/>
- <div class="doclist" id="doclist"><div class="small" style="color:var(--t3)">loading\u2026</div></div>`);
+ openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">✕</span><h2>My material</h2><div class="sub">Everything Vidhyāsathi grounds its answers in — upload your notes, syllabi, or past papers.</div>
+ <div class="drop" id="drop" role="button" tabindex="0" onclick="document.getElementById('file').click()"><div style="font-size:22px;color:var(--gold)">⤓</div><div class="big">Drop a file here, or click to choose</div><div class="small">PDF, Word, PowerPoint, Excel, CSV, text or an image — it gets chunked, embedded, and indexed</div></div>
+ <input id="file" type="file" style="display:none" aria-label="Choose a file to upload" onchange="doUpload(this.files[0]);this.value=''"/>
+ <div class="doclist" id="doclist"><div class="small" style="color:var(--t3)">loading…</div></div>`,2);
  setupDrop(); listMaterial();
 }
 function setupDrop(){const d=document.getElementById('drop');if(!d)return;
  ['dragover','dragenter'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('drag')}));
  ['dragleave'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('drag')}));
  d.addEventListener('drop',ev=>{ev.preventDefault();d.classList.remove('drag');if(ev.dataTransfer.files[0])doUpload(ev.dataTransfer.files[0])});
+ d.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();document.getElementById('file').click();}});
 }
 async function listMaterial(){
- try{const r=await fetch(API+'/api/material?user='+encodeURIComponent(USER_EMAIL)).then(x=>x.json());const el=document.getElementById('doclist');if(!el)return;
-  if(!r.docs||!r.docs.length){el.innerHTML='<div class="small" style="color:var(--t3)">Nothing yet \u2014 upload your own notes above to get started.</div>';return;}
-  el.innerHTML=r.docs.map(d=>`<div class="doc"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="1.5" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3.5" stroke="#d9b45a" stroke-width="1"/></svg><span class="nm">${esc(d.name)}${d.indexed?'':' <span style="color:var(--warn,#c9743a);font-size:11px">\u00b7 not indexed</span>'}</span><span class="sz">${(d.size/1024).toFixed(0)} KB</span><button class="docdel" title="Remove" onclick="delMaterial('${esc(d.name).replace(/'/g,"\\'")}')">\u2715</button></div>`).join('');
- }catch(e){}
+ const box=()=>document.getElementById('doclist');
+ let r;
+ try{r=await api('/api/material',{method:'GET'});}
+ catch(e){const b=box();if(b){b.replaceChildren(el('div','small',"Couldn't load your material: "+e.message));b.firstChild.style.color='#e79178';}return;}
+ const b=box();if(!b)return;
+ if(!r.docs||!r.docs.length){const n=el('div','small','Nothing yet — upload your own notes above to get started.');n.style.color='var(--t3)';b.replaceChildren(n);return;}
+ b.replaceChildren(...r.docs.map(d=>{
+   const row=el('div','doc');
+   row.insertAdjacentHTML('beforeend','<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3.5" stroke="#d9b45a" stroke-width="1"/></svg>');
+   const nm=el('span','nm',d.name);
+   if(!d.indexed){const w=el('span',null,' · not indexed');w.style.cssText='color:var(--warn,#c9743a);font-size:11px';nm.append(w);}
+   const del=el('button','docdel','✕');del.type='button';del.title='Remove';del.setAttribute('aria-label','Remove '+d.name);
+   del.addEventListener('click',()=>delMaterial(d.name));
+   row.append(nm,el('span','sz',Math.max(1,Math.round((d.size||0)/1024))+' KB'),del);
+   return row;
+ }));
 }
 async function delMaterial(name){
  if(!confirm('Remove "'+name+'" from your material? This deletes its indexed chunks too.'))return;
- try{const r=await post('/api/material/delete',{name});toast(r.ok?('Removed '+name):'Could not remove');listMaterial();}
- catch(e){toast('Remove failed \u2014 is app.py running?')}
+ try{const r=await post('/api/material/delete',{name});toast(r.ok?('Removed '+name):(r.error||'Could not remove'));}
+ catch(e){toast(e.status===404?(name+' was already removed.'):("Couldn't remove "+name+': '+e.message));}
+ listMaterial();
 }
 async function doUpload(file){
- if(!file)return; toast('Uploading & indexing '+file.name+'\u2026');
- const fd=new FormData();fd.append('file',file);fd.append('user',USER_EMAIL);
- try{const r=await fetch(API+'/api/upload',{method:'POST',body:fd}).then(x=>x.json());
-  toast(r.indexed?('Indexed '+r.name+' \u2713 ('+(r.chunks||0)+' chunks)'):('Saved '+r.name+' \u2014 '+(r.error||'indexing failed'))); listMaterial();
- }catch(e){toast('Upload failed \u2014 is app.py running?')}
+ if(!file)return;
+ toast('Uploading & indexing '+file.name+'…');
+ const fd=new FormData();fd.append('file',file);
+ try{const r=await api('/api/upload',{form:fd});
+  if(r.indexed){toast('Indexed '+r.name+' ✓ ('+(r.chunks||0)+' chunks)'+((r.warnings&&r.warnings.length)?' — '+r.warnings.join(' '):''));}
+  else toast("Couldn't index "+(r.name||file.name)+' — '+(r.error||'indexing failed'));
+ }catch(e){toast('Upload failed — '+e.message);}
+ listMaterial();
 }
 function openTrust(){
- openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Trust &amp; citations</h2><div class="sub">How to read what Vidhy\u0101sathi tells you.</div><div class="info">
- <p style="margin-bottom:11px"><span class="cite">Mod 1 \u00b7 p1</span> a <b>gilded tag</b> means that line came straight from your material.</p>
+ openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">✕</span><h2>Trust &amp; citations</h2><div class="sub">How to read what Vidhyāsathi tells you.</div><div class="info">
+ <p style="margin-bottom:11px"><span class="cite">Mod 1 · p1</span> a <b>gilded tag</b> means that line came straight from your material.</p>
  <p style="margin-bottom:11px"><span class="tag ok">grounded</span> fully supported by your notes.</p>
- <p style="margin-bottom:11px"><span class="tag warn">tentative</span> weak match \u2014 offered with an ask-a-human option.</p>
+ <p style="margin-bottom:11px"><span class="tag warn">tentative</span> weak match — offered with an ask-a-human option.</p>
  <p style="margin-bottom:11px"><span class="tag no">not in material</span> an honest refusal instead of a made-up answer.</p>
- <p><span class="cite web">\ud83c\udf10 web</span> a last-resort web answer, re-expressed in your notes' style and clearly disclosed.</p></div>`);
+ <p><span class="cite web">🌐 web</span> a last-resort web answer, re-expressed in your notes' style and clearly disclosed.</p></div>`,4);
 }
 function openSettings(){
- const name=localStorage.getItem('vs_user')||'\u2014';
- const email=localStorage.getItem('vs_email')||USER_EMAIL||'\u2014';
+ const name=localStorage.getItem('vs_user')||'—';
+ const email=USER_EMAIL||'—';
  const dm=localStorage.getItem('vs_mode')||'quick';
  const web=localStorage.getItem('vs_web')==='1';
  const mbtn=(m,l)=>`<button class="btn${dm===m?' on':''}" onclick="setDefaultMode('${m}')">${l}</button>`;
- openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Settings</h2><div class="sub">Vidhy\u0101sathi runs entirely on your machine, grounded in your own material.</div>
+ openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">✕</span><h2>Settings</h2><div class="sub">Vidhyāsathi runs on your own machine, grounded in your own material.</div>
  <div class="trow"><span class="k">Signed in as</span><span class="v" style="text-align:right"><b>${esc(name)}</b><br><span style="color:var(--t3);font-size:12px">${esc(email)}</span></span></div>
  <div class="trow"><span class="k">Default mode</span><span class="v" style="display:flex;gap:6px">${mbtn('quick','Quick')}${mbtn('teach','Teach')}${mbtn('exam','Exam')}</span></div>
  <div class="trow"><span class="k">Web fallback default</span><span class="v"><button class="btn${web?' on':''}" id="webDefBtn" onclick="toggleWebDefault()">${web?'On':'Off'}</button></span></div>
- <div class="trow"><span class="k">My material</span><span class="v"><button class="btn" onclick="openMaterial()">Manage\u2026</button></span></div>
- <div class="trow"><span class="k">Model</span><span class="v">llama 3.1 \u00b7 local (Ollama)</span></div>
- <div class="trow"><span class="k">Recent chats</span><span class="v"><button class="btn warn" onclick="localStorage.removeItem('vs_chats');toast('Cleared');">Clear all</button></span></div>
+ <div class="trow"><span class="k">My material</span><span class="v"><button class="btn" onclick="openMaterial()">Manage…</button></span></div>
+ <div class="trow"><span class="k">Model</span><span class="v">llama 3.1 · local (Ollama)</span></div>
+ <div class="trow"><span class="k">Recent chats</span><span class="v"><button class="btn warn" onclick="clearChats()">Clear all</button></span></div>
  <details style="margin-top:10px"><summary style="cursor:pointer;color:var(--gold2);font-size:13.5px">Change password</summary>
   <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
-   <input id="pwOld" type="password" placeholder="Current password" class="sinput"/>
-   <input id="pwNew" type="password" placeholder="New password" class="sinput"/>
+   <input id="pwOld" type="password" placeholder="Current password" aria-label="Current password" autocomplete="current-password" class="sinput"/>
+   <input id="pwNew" type="password" placeholder="New password (6+ characters)" aria-label="New password" autocomplete="new-password" class="sinput"/>
    <button class="btn" onclick="doChangePassword()">Update password</button>
    <div id="pwMsg" class="small" style="color:var(--t3)"></div></div></details>
  <details style="margin-top:8px"><summary style="cursor:pointer;color:#d98a55;font-size:13.5px">Delete account</summary>
   <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
    <div class="small" style="color:var(--t3)">Permanently removes your account, uploaded files, and all indexed material.</div>
-   <input id="delPw" type="password" placeholder="Confirm password" class="sinput"/>
+   <input id="delPw" type="password" placeholder="Confirm password" aria-label="Confirm password" autocomplete="current-password" class="sinput"/>
    <button class="btn warn" onclick="doDeleteAccount()">Delete my account</button>
    <div id="delMsg" class="small" style="color:var(--t3)"></div></div></details>
- <div class="trow" style="margin-top:8px"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>`);
+ <div class="trow" style="margin-top:8px"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>`,-1);
+ document.querySelector('.footer').classList.add('on');
 }
 function setDefaultMode(m){localStorage.setItem('vs_mode',m);setModeByName(m);openSettings();}
 function toggleWebDefault(){const on=localStorage.getItem('vs_web')!=='1';localStorage.setItem('vs_web',on?'1':'0');
  const wt=document.getElementById('webToggle');if(wt)wt.classList.toggle('on',on);openSettings();}
-async function doChangePassword(){const o=document.getElementById('pwOld').value,n=document.getElementById('pwNew').value,msg=document.getElementById('pwMsg');
- if(!o||!n){msg.textContent='Fill both fields.';return;}msg.textContent='Updating\u2026';
- try{const r=await fetch(API+'/api/account/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:USER_EMAIL,old_password:o,new_password:n})}).then(x=>x.json());
-  msg.textContent=r.ok?'Password updated \u2713':(r.error||'Failed');msg.style.color=r.ok?'#7bb08a':'#d98a55';}catch(e){msg.textContent='Server not reachable.';}
+async function doChangePassword(){const o=document.getElementById('pwOld').value,n=document.getElementById('pwNew').value,m=document.getElementById('pwMsg');
+ if(!o||!n){m.textContent='Fill both fields.';return;}m.textContent='Updating…';m.style.color='var(--t3)';
+ try{await post('/api/account/password',{old_password:o,new_password:n});m.textContent='Password updated ✓';m.style.color='#7bb08a';}
+ catch(e){m.textContent=e.message;m.style.color='#d98a55';}
 }
-async function doDeleteAccount(){const pw=document.getElementById('delPw').value,msg=document.getElementById('delMsg');
- if(!pw){msg.textContent='Enter your password to confirm.';return;}
- if(!confirm('Delete your account and all your material? This cannot be undone.'))return;msg.textContent='Deleting\u2026';
- try{const r=await fetch(API+'/api/account/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:USER_EMAIL,password:pw})}).then(x=>x.json());
-  if(r.ok){signOut();}else{msg.textContent=r.error||'Failed';msg.style.color='#d98a55';}}catch(e){msg.textContent='Server not reachable.';}
+async function doDeleteAccount(){const pw=document.getElementById('delPw').value,m=document.getElementById('delMsg');
+ if(!pw){m.textContent='Enter your password to confirm.';return;}
+ if(!confirm('Delete your account and all your material? This cannot be undone.'))return;m.textContent='Deleting…';
+ try{await post('/api/account/delete',{password:pw});signOut(true);}
+ catch(e){m.textContent=e.message;m.style.color='#d98a55';}
+}
+
+/* ---------- recent chats (per account, stored as data) ---------- */
+function loadChats(){try{const c=JSON.parse(localStorage.getItem('vs_chats')||'[]');return Array.isArray(c)?c:[];}catch(e){return [];}}
+function myChats(){return loadChats().filter(c=>c&&(!c.owner||c.owner===USER_EMAIL));}
+function clearChats(){
+  const others=loadChats().filter(c=>c&&c.owner&&c.owner!==USER_EMAIL);
+  if(others.length)localStorage.setItem('vs_chats',JSON.stringify(others));else localStorage.removeItem('vs_chats');
+  toast('Cleared');
 }
 function openRecent(){
- const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');
- const list=chats.length?chats.map((c,i)=>`<div class="r" onclick="restoreChat(${i})">${(c.title||'Chat')} <span style="color:var(--t3);font-size:11px">\u00b7 ${new Date(c.time).toLocaleString()}</span></div>`).join(''):'<div class="small" style="color:var(--t3)">No past chats yet.</div>';
- openModal(`<span class="x" onclick="closeModal()">\u2715</span><h2>Recent chats</h2><div class="sub">Saved in this browser.</div><div class="recent">${list}</div>`);
+ openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">✕</span><h2>Recent chats</h2><div class="sub">Saved in this browser, for this account.</div><div class="recent" id="recentList"></div>`,1);
+ const list=document.getElementById('recentList');const chats=myChats();
+ if(!chats.length){const n=el('div','small','No past chats yet.');n.style.color='var(--t3)';list.append(n);return;}
+ chats.forEach(c=>{
+   const r=el('div','r',c.title||'Chat');r.tabIndex=0;r.setAttribute('role','button');
+   const when=el('span',null,' · '+new Date(c.time).toLocaleString());when.style.cssText='color:var(--t3);font-size:11px';r.append(when);
+   r.addEventListener('click',()=>restoreChat(c.id??c.time));
+   r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();restoreChat(c.id??c.time);}});
+   list.append(r);
+ });
 }
-function restoreChat(i){const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');const c=chats[i];if(!c)return;
- document.getElementById('hero').classList.add('hidden');const t=document.getElementById('transcript');t.classList.remove('hidden');t.innerHTML=c.html;history=c.history||[];closeModal();setActiveNav(0);typeset(t);scrollDown();}
-function saveCurrentChat(){const t=document.getElementById('transcript');if(t.classList.contains('hidden')||!t.innerHTML.trim())return;
- const f=t.querySelector('.msg.user .bubble');const title=f?f.textContent.slice(0,48):'Chat';
- const chats=JSON.parse(localStorage.getItem('vs_chats')||'[]');chats.unshift({title,time:Date.now(),html:t.innerHTML,history});
- localStorage.setItem('vs_chats',JSON.stringify(chats.slice(0,20)));}
-function setActiveNav(i){document.querySelectorAll('.nav a').forEach((a,j)=>a.classList.toggle('on',j===i));}
+function restoreChat(id){
+ const c=myChats().find(x=>(x.id??x.time)===id);if(!c)return;
+ if(chatLog.length&&chatId!==(c.id??c.time))saveCurrentChat();
+ chatGen++;busy=false;
+ const t=document.getElementById('transcript');t.replaceChildren();
+ chatLog=[];
+ const log=Array.isArray(c.log)?c.log:(c.html?[{t:'html',html:c.html}]:[]);
+ log.forEach(e=>{chatLog.push(e);pushEntry(e,false);});
+ history=Array.isArray(c.history)?c.history:[];chatId=c.id??c.time;
+ document.getElementById('hero').classList.add('hidden');t.classList.remove('hidden');
+ baseNav=0;closeModal();typeset(t);scrollDown();
+}
+function saveCurrentChat(){
+ if(suppressSave||!USER_EMAIL||!chatLog.length)return;
+ const first=chatLog.find(e=>e.t==='user');
+ const title=first?String(first.text).slice(0,48):'Chat';
+ const chats=loadChats().filter(c=>(c.id??c.time)!==chatId);
+ const id=chatId??Date.now();
+ chats.unshift({id,owner:USER_EMAIL,title,time:Date.now(),log:chatLog,history});
+ chatId=id;
+ try{localStorage.setItem('vs_chats',JSON.stringify(chats.slice(0,20)));}catch(e){}
+}
+
+/* ---------- nav / sidebar / account menu ---------- */
+function setActiveNav(i){
+  document.querySelectorAll('.nav a').forEach((a,j)=>{a.classList.toggle('on',j===i);if(j===i)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  const f=document.querySelector('.footer');if(f)f.classList.remove('on');
+}
 function showCurrent(){const t=document.getElementById('transcript');const h=document.getElementById('hero');
- if(t.innerHTML.trim()){h.classList.add('hidden');t.classList.remove('hidden');}else{h.classList.remove('hidden');t.classList.add('hidden');}
- setActiveNav(0);closeModal();scrollDown();}
+ if(t.childNodes.length){h.classList.add('hidden');t.classList.remove('hidden');}else{h.classList.remove('hidden');t.classList.add('hidden');}
+ baseNav=0;document.getElementById('overlay').classList.remove('show');setActiveNav(0);closeSidebar();scrollDown();}
+function openPractice(){setModeByName('exam');showCurrent();baseNav=3;setActiveNav(3);toast('Exam mode — type a topic to generate a practice set');document.getElementById('input').focus();}
+function keyActivate(node,fn){node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(e);}});}
+function toggleSidebar(){document.body.classList.toggle('nav-open');}
+function closeSidebar(){document.body.classList.remove('nav-open');}
 function attachNav(){const nav=document.querySelectorAll('.nav a');
- if(nav[0])nav[0].onclick=showCurrent;
- if(nav[1])nav[1].onclick=openRecent;
- if(nav[2])nav[2].onclick=openMaterial;
- if(nav[3])nav[3].onclick=()=>{setModeByName('exam');showCurrent();toast('Exam mode \u2014 type a topic to generate a practice set');};
- if(nav[4])nav[4].onclick=openTrust;
- const ft=document.querySelector('.footer');if(ft)ft.onclick=openSettings;
- window.addEventListener('beforeunload',saveCurrentChat);
+ const actions=[showCurrent,openRecent,openMaterial,openPractice,openTrust];
+ nav.forEach((a,i)=>{a.onclick=e=>{e.preventDefault();actions[i]&&actions[i]();};keyActivate(a,()=>actions[i]&&actions[i]());});
+ const ft=document.querySelector('.footer');if(ft){ft.onclick=openSettings;keyActivate(ft,openSettings);}
+ const chip=document.getElementById('acctChip');if(chip)keyActivate(chip,toggleAcct);
+ window.addEventListener('beforeunload',()=>saveCurrentChat());
  buildAcctMenu();
  document.addEventListener('click',e=>{const m=document.getElementById('acctMenu');const c=document.getElementById('acctChip');
-  if(m&&c&&!c.contains(e.target)&&!m.contains(e.target))m.classList.remove('show');});
+  if(m&&c&&!c.contains(e.target)&&!m.contains(e.target)){m.classList.remove('show');c.setAttribute('aria-expanded','false');}});
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeSidebar();const m=document.getElementById('acctMenu');if(m)m.classList.remove('show');}});
 }
 function buildAcctMenu(){const chip=document.getElementById('acctChip');if(!chip)return;
  chip.style.position='relative';
- let m=document.getElementById('acctMenu');if(!m){m=document.createElement('div');m.id='acctMenu';m.className='acctmenu';m.onclick=e=>e.stopPropagation();chip.appendChild(m);}
- const email=localStorage.getItem('vs_email')||USER_EMAIL||'signed in';
- m.innerHTML=`<div class="who">${esc(email)}</div>
-  <button onclick="openSettings();document.getElementById('acctMenu').classList.remove('show')">Settings</button>
-  <button onclick="openMaterial();document.getElementById('acctMenu').classList.remove('show')">My material</button>
-  <button class="warn" onclick="signOut()">Sign out</button>`;
+ let m=document.getElementById('acctMenu');
+ if(!m){m=el('div','acctmenu');m.id='acctMenu';m.setAttribute('role','menu');m.onclick=e=>e.stopPropagation();chip.appendChild(m);}
+ m.replaceChildren(el('div','who',USER_EMAIL||'signed in'));
+ for(const [label,fn,cls] of [['Settings',openSettings],['My material',openMaterial],['Sign out',()=>signOut(),'warn']]){
+   const b=el('button',cls||null,label);b.type='button';b.setAttribute('role','menuitem');
+   b.addEventListener('click',()=>{m.classList.remove('show');chip.setAttribute('aria-expanded','false');fn();});
+   m.append(b);
+ }
 }
-function toggleAcct(e){e.stopPropagation();const m=document.getElementById('acctMenu');if(m)m.classList.toggle('show');}
+function toggleAcct(e){if(e&&e.stopPropagation)e.stopPropagation();const m=document.getElementById('acctMenu'),c=document.getElementById('acctChip');
+ if(m){m.classList.toggle('show');c.setAttribute('aria-expanded',m.classList.contains('show')?'true':'false');}}
 
 /* ---------- auth ---------- */
 let authMode='signup';
 function toggleAuth(){authMode=authMode==='signup'?'login':'signup';
  document.getElementById('authName').style.display=authMode==='signup'?'':'none';
  document.getElementById('authBtnText').textContent=authMode==='signup'?'Create account':'Sign in';
- document.getElementById('authToggle').innerHTML=authMode==='signup'?'Already have an account?  <b onclick="toggleAuth()">Sign in</b>':'New here?  <b onclick="toggleAuth()">Create an account</b>';
+ document.getElementById('anPass').setAttribute('autocomplete',authMode==='signup'?'new-password':'current-password');
+ document.getElementById('authToggle').innerHTML=authMode==='signup'?'Already have an account?  <b role="button" tabindex="0" onclick="toggleAuth()">Sign in</b>':'New here?  <b role="button" tabindex="0" onclick="toggleAuth()">Create an account</b>';
  document.getElementById('authErr').style.display='none';}
-function esc(s){return (s||'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
-let USER_EMAIL='';
-function applyUser(name,email){localStorage.setItem('vs_user',name);
+function applyUser(name,email,token){
+ name=String(name||'');
+ localStorage.setItem('vs_user',name);
  if(email){USER_EMAIL=email;localStorage.setItem('vs_email',email);}
+ if(token){USER_TOKEN=token;localStorage.setItem('vs_token',token);}
  const first=(name.trim().split(/\s+/)[0])||name;
- const h1=document.querySelector('.hero h1'); if(h1)h1.innerHTML='<span class="sk">\u0928\u092e\u0938\u094d\u0924\u0947,</span> '+esc(first);
+ const h1=document.querySelector('.hero h1');
+ if(h1){h1.replaceChildren(el('span','sk','नमस्ते,'),document.createTextNode(' '+first));}
  const av=document.querySelector('.acct .av'); if(av)av.childNodes[0].nodeValue=(name.trim()[0]||'?').toUpperCase();
  const nm=document.querySelector('.acct .nm'); if(nm)nm.textContent=first;
  buildAcctMenu();}
 function applyPrefs(){
- const m=localStorage.getItem('vs_mode'); if(m)setModeByName(m);
- const w=localStorage.getItem('vs_web'); const wt=document.getElementById('webToggle');
- if(wt&&w==='1')wt.classList.add('on');}
-function signOut(){localStorage.removeItem('vs_user');localStorage.removeItem('vs_email');localStorage.removeItem('vs_chats');location.reload();}
+ const m=localStorage.getItem('vs_mode'); chipsFor(['quick','teach','exam'].includes(m)?m:'quick');
+ const wt=document.getElementById('webToggle'); if(wt)wt.classList.toggle('on',localStorage.getItem('vs_web')==='1');}
+function clearSession(){['vs_user','vs_email','vs_token'].forEach(k=>localStorage.removeItem(k));USER_EMAIL='';USER_TOKEN='';}
+function signOut(skipServer){
+ suppressSave=true;
+ const tok=USER_TOKEN;
+ if(tok&&!skipServer){try{fetch(API+'/api/logout',{method:'POST',headers:{'Authorization':'Bearer '+tok}}).catch(()=>{});}catch(e){}}
+ clearSession();localStorage.removeItem('vs_chats');
+ location.reload();
+}
+function showLogin(message){
+ document.getElementById('app').classList.add('hidden');
+ document.getElementById('login').classList.remove('hidden');
+ if(authMode!=='login')toggleAuth();
+ const err=document.getElementById('authErr');
+ if(message){err.textContent=message;err.style.display='block';}
+}
+function sessionExpired(message){
+ saveCurrentChat();clearSession();busy=false;killLoader();
+ showLogin(message||'Your session has expired. Please sign in again.');
+}
 async function doAuth(){
  const name=(document.getElementById('anName').value||'').trim();
  const email=(document.getElementById('anEmail').value||'').trim();
@@ -660,15 +907,25 @@ async function doAuth(){
  if(!email||!pass||(authMode==='signup'&&!name)){err.textContent='Please fill everything in.';err.style.display='block';return;}
  try{
   const body=authMode==='signup'?{name,email,password:pass}:{email,password:pass};
-  const r=await fetch(API+(authMode==='signup'?'/api/signup':'/api/login'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
+  const r=await api(authMode==='signup'?'/api/signup':'/api/login',{body,auth:false});
   if(!r.ok){err.textContent=r.error||'Something went wrong.';err.style.display='block';return;}
-  applyUser(r.name, r.email||email); enter(); applyPrefs();
- }catch(e){err.textContent='Server not reachable \u2014 is app.py running?';err.style.display='block';}
+  suppressSave=false;
+  if(r.email&&localStorage.getItem('vs_email')&&localStorage.getItem('vs_email')!==r.email)localStorage.removeItem('vs_chats');
+  applyUser(r.name,r.email||email,r.token);err.style.display='none';
+  document.getElementById('anPass').value='';
+  enter();applyPrefs();setActiveNav(0);
+ }catch(e){err.textContent=e.message;err.style.display='block';}
 }
 
 attachNav();
-const _u=localStorage.getItem('vs_user'); const _e=localStorage.getItem('vs_email');
-if(_u){applyUser(_u,_e||'');enter();applyPrefs();setActiveNav(0);}
+(function boot(){
+ const u=localStorage.getItem('vs_user'),e=localStorage.getItem('vs_email'),t=localStorage.getItem('vs_token');
+ if(u&&e&&t){applyUser(u,e,t);enter();applyPrefs();setActiveNav(0);return;}
+ if(u||e){                                   // saved by an older version: no session token
+   clearSession();localStorage.removeItem('vs_chats');
+   showLogin('Vidhyāsathi now uses secure sign-in. Please sign in again.');
+ }
+})();
 </script>
 </body>
 </html>

@@ -11,7 +11,7 @@ test('quick mode: send posts question, shows user echo + answer, hides hero', as
   const c = env.callsTo('/api/answer');
   assert.equal(c.length, 1);
   assert.equal(c[0].method, 'POST');
-  assert.deepEqual({ ...c[0].body }, { question: 'What is a prime?', mode: 'quick', web: false, history: [], user: 'asha@x.com' });
+  assert.deepEqual({ ...c[0].body }, { question: 'What is a prime?', mode: 'quick', web: false, history: [] });
   assert.ok(!env.visible('#hero'));
   assert.equal(env.$('#transcript .msg.user .bubble').textContent, 'What is a prime?');
   assert.ok(env.lastBot().querySelector('.bubble').textContent.includes('Fine'));

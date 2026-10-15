@@ -1,7 +1,7 @@
 // My material modal: list, upload, delete, file-name injection.
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, closeAll, injected, USER } from './harness.mjs';
+import { boot, closeAll, injected, USER, AUTH, authOf } from './harness.mjs';
 
 afterEach(closeAll);
 
@@ -37,7 +37,7 @@ test('upload sends file + user in FormData and reports indexed + chunk count', a
   assert.equal(c.method, 'POST');
   const fd = c.init.body;
   assert.ok(fd instanceof env.window.FormData);
-  assert.equal(fd.get('user'), 'asha@x.com');
+  assert.equal(authOf(c), AUTH, 'upload sent without the session token');
   assert.equal(fd.get('file').name, 'n.txt');
   assert.match(env.$('#toast').textContent, /Indexed n\.txt ✓ \(7 chunks\)/);
   assert.ok(env.callsTo('/api/material').length >= 2, 'list refreshed after upload');
@@ -66,7 +66,8 @@ test('delete (✕) asks to confirm, posts name + user, toasts and refreshes', as
   env.click(env.$('#doclist .docdel')); await env.settle();
   assert.equal(env.confirms.length, 1);
   const c = env.callsTo('/api/material/delete')[0];
-  assert.deepEqual({ ...c.body }, { name: 'a.txt', user: 'asha@x.com' });
+  assert.deepEqual({ ...c.body }, { name: 'a.txt' });
+  assert.equal(authOf(c), AUTH);
   assert.match(env.$('#toast').textContent, /Removed a\.txt/);
 });
 
@@ -108,8 +109,10 @@ test('file name with a double quote cannot add attributes/handlers to the ✕ bu
   const env = boot({ storage: USER, routes: { '/api/material': { docs: [{ name, size: 10, indexed: true }] } } });
   env.window.openMaterial(); await env.settle();
   const btn = env.$('#doclist .docdel');
-  const attrs = [...btn.attributes].map(a => a.name).sort();
-  assert.deepEqual(attrs, ['class', 'onclick', 'title'], `file name injected attributes into the button: ${attrs}`);
+  const attrs = [...btn.attributes].map(a => a.name);
+  const allowed = new Set(['class', 'onclick', 'title', 'type', 'aria-label']);
+  assert.deepEqual(attrs.filter(a => !allowed.has(a)), [], `file name injected attributes into the button: ${attrs}`);
+  assert.ok(!btn.hasAttribute('onmouseover') && !btn.hasAttribute('data-x'));
 });
 
 test('upload rejected by the server (HTTP 500/413, non-JSON) is not reported as "is app.py running?"', async () => {

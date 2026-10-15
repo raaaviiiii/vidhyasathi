@@ -111,7 +111,7 @@ test('Recent chats are per-user: after A signs out, B on the same browser cannot
   await a.ask('my private question');          // chat open (not yet saved)
   a.window.signOut();                           // removes vs_chats, then location.reload()
   a.window.dispatchEvent(new a.window.Event('beforeunload')); // what the reload fires in a real browser
-  const b = a.reload({ routes: { '/api/login': { ok: true, name: 'Bala', email: 'bala@x.com' } } });
+  const b = a.reload({ routes: { '/api/login': { ok: true, name: 'Bala', email: 'bala@x.com', token: 'tok-bala' } } });
   assert.ok(b.visible('#login'));
   b.window.toggleAuth();
   b.$('#anEmail').value = 'bala@x.com'; b.$('#anPass').value = 'pw';
@@ -247,7 +247,7 @@ test('Change password: both fields required; posts email/old/new; shows server e
   assert.equal(env.callsTo('/api/account/password').length, 0);
   env.$('#pwOld').value = 'old'; env.$('#pwNew').value = 'newpass';
   await env.window.doChangePassword();
-  assert.deepEqual(env.callsTo('/api/account/password')[0].body, { email: 'asha@x.com', old_password: 'old', new_password: 'newpass' });
+  assert.deepEqual(env.callsTo('/api/account/password')[0].body, { old_password: 'old', new_password: 'newpass' });
   assert.equal(env.$('#pwMsg').textContent, 'Current password is wrong.');
 });
 
@@ -260,14 +260,14 @@ test('Change password success shows confirmation', async () => {
 });
 
 test('Delete account: requires password + confirm; posts email/password; error shown; success signs out', async () => {
-  const env = boot({ storage: USER, routes: { '/api/account/delete': (b) => b.password === 'right' ? { ok: true } : { __resp: true, status: 401, json: { ok: false, error: 'Wrong password.' } } } });
+  const env = boot({ storage: USER, routes: { '/api/account/delete': (b) => b.password === 'right' ? { ok: true } : { __resp: true, status: 403, json: { ok: false, error: 'Wrong password.' } } } });
   env.window.openSettings();
   await env.window.doDeleteAccount();
   assert.match(env.$('#delMsg').textContent, /Enter your password/);
   env.$('#delPw').value = 'bad';
   await env.window.doDeleteAccount();
   assert.equal(env.confirms.length, 1);
-  assert.deepEqual(env.callsTo('/api/account/delete')[0].body, { email: 'asha@x.com', password: 'bad' });
+  assert.deepEqual(env.callsTo('/api/account/delete')[0].body, { password: 'bad' });
   assert.equal(env.$('#delMsg').textContent, 'Wrong password.');
   env.$('#delPw').value = 'right';
   await env.window.doDeleteAccount();

@@ -537,8 +537,12 @@ def test_delete_with_path_components_does_not_escape(app_client):
 # ============================================================ ACCOUNT DELETE
 def test_account_delete_wrong_password_rejected(app_client):
     a = Session.create(app_client, "A", "a@x.com")
-    r = app_client.post("/api/account/delete", json={"email": "a@x.com", "password": "wrong"})
-    assert r.status_code == 401 and r.json()["ok"] is False
+    r = app_client.post("/api/account/delete", json={"password": "wrong"}, headers=a.auth())
+    # signed in but the confirmation is wrong: rejected, and NOT treated as a dead session
+    assert r.status_code == 403 and r.json()["ok"] is False
+    assert app_client.get("/api/me", headers=a.auth()).status_code == 200
+    # and without a session at all, it's a 401
+    assert app_client.post("/api/account/delete", json={"password": "passw0rd"}).status_code == 401
 
 
 def test_account_delete_removes_account_and_allows_resignup(app_client):
@@ -566,10 +570,11 @@ def test_account_delete_purges_material_chunks(app_client):
 
 # ============================================================ PASSWORD / HASHING
 def test_change_password_wrong_old_rejected(app_client):
-    Session.create(app_client, "A", "a@x.com")
+    a = Session.create(app_client, "A", "a@x.com")
     r = app_client.post("/api/account/password",
-                        json={"email": "a@x.com", "old_password": "nope", "new_password": "newpass"})
-    assert r.status_code == 401 and r.json()["ok"] is False
+                        json={"old_password": "nope", "new_password": "newpass"}, headers=a.auth())
+    assert r.status_code == 403 and r.json()["ok"] is False
+    assert app_client.get("/api/me", headers=a.auth()).status_code == 200
 
 
 def test_change_password_then_login_with_new(app_client):

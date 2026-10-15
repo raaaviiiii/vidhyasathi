@@ -1,7 +1,7 @@
 // Login / signup / identity tests for index.html.
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, closeAll, resp, USER } from './harness.mjs';
+import { boot, closeAll, resp, USER, AUTH, authOf } from './harness.mjs';
 
 afterEach(closeAll);
 
@@ -82,7 +82,7 @@ test('reload with a saved user goes straight to home with greeting', async () =>
 
 test('user name with HTML is shown as text in greeting, chip, menu and settings', async () => {
   const evil = '<img src=x onerror=alert(1)>';
-  const env = boot({ storage: { vs_user: evil, vs_email: '"><img src=x onerror=alert(2)>@x.com' } });
+  const env = boot({ storage: { vs_user: evil, vs_email: '"><img src=x onerror=alert(2)>@x.com', vs_token: 'tok' } });
   await env.settle();
   assert.equal(env.$$('.hero h1 img, .acct img, #acctMenu img').length, 0);
   env.window.openSettings();
@@ -98,11 +98,8 @@ test('every request carries the signed-in identity (answer, exam, grade, materia
   env.window.openGrade(); await env.settle();
   env.window.openMaterial(); await env.settle();
   await env.window.delMaterial('a.txt'); await env.settle();
-  assert.equal(env.callsTo('/api/answer')[0].body.user, 'asha@x.com');
-  assert.equal(env.callsTo('/api/exam')[0].body.user, 'asha@x.com');
-  assert.equal(env.callsTo('/api/grade')[0].body.user, 'asha@x.com');
-  assert.equal(env.callsTo('/api/material')[0].query.user, 'asha@x.com');
-  assert.equal(env.callsTo('/api/material/delete')[0].body.user, 'asha@x.com');
+  for (const p of ['/api/answer', '/api/exam', '/api/grade', '/api/material', '/api/material/delete'])
+    assert.equal(authOf(env.callsTo(p)[0]), AUTH, `${p} sent without the session token`);
 });
 
 test('a user saved before the per-user update (vs_user but no vs_email) is not silently put in the shared bucket', async () => {
@@ -112,6 +109,5 @@ test('a user saved before the per-user update (vs_user but no vs_email) is not s
   await env.settle();
   if (env.visible('#login')) return; // acceptable: forced re-login
   await env.ask('what is a prime?');
-  const sent = env.callsTo('/api/answer')[0].body.user;
-  assert.notEqual(sent, '', 'request sent user:"" → backend _uid() → shared/None bucket shared by every such user');
+  assert.ok(authOf(env.callsTo('/api/answer')[0]), 'request sent with no identity at all');
 });
