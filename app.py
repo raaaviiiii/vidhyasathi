@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.answer import answer
 from src.build_index import ingest_file
-from src.doubts import route as route_doubt, index_helper_answers
+from src.doubts import route as route_doubt, index_helper_answers, HELPER_DOC
 from src.errors import ServiceDown, StoreUnavailable
 from src.exam import generate, MAX_N as EXAM_MAX_N
 from src.grade import grade
@@ -187,8 +187,9 @@ _db_lock = threading.Lock()
 
 def _db():
     c = sqlite3.connect(USERS_DB, timeout=10)
-    c.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT, "
+    c.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, "
               "email TEXT UNIQUE, pw TEXT, salt TEXT, created REAL)")
+    _migrate_autoincrement(c)
     ucols = [r[1] for r in c.execute("PRAGMA table_info(users)")]
     if "role" not in ucols:            # phase 2: student | helper
         c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
@@ -197,7 +198,12 @@ def _db():
     c.execute("CREATE TABLE IF NOT EXISTS doubts(id INTEGER PRIMARY KEY, student_id INTEGER NOT NULL, "
               "student_email TEXT NOT NULL, question TEXT NOT NULL, attempt TEXT, decision TEXT, "
               "sources TEXT, note TEXT, status TEXT NOT NULL DEFAULT 'open', helper_id INTEGER, "
-              "created REAL, answer TEXT, answered_by INTEGER, answered_at REAL, helpful INTEGER)")
+              "created REAL, answer TEXT, answered_by INTEGER, answered_at REAL, helpful INTEGER, "
+              "answered_name TEXT, edited_at REAL)")
+    dcols = [r[1] for r in c.execute("PRAGMA table_info(doubts)")]
+    for col, typ in (("answered_name", "TEXT"), ("edited_at", "REAL")):
+        if col not in dcols:
+            c.execute(f"ALTER TABLE doubts ADD COLUMN {col} {typ}")
     # one row per question asked: WHEN and the DECISION only (never the question text),
     # so escalation and refusal rates can be tracked over time
     c.execute("CREATE TABLE IF NOT EXISTS usage(id INTEGER PRIMARY KEY, user_id INTEGER, "
@@ -210,6 +216,42 @@ def _db():
     c.execute("CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, "
               "user_id INTEGER NOT NULL, email TEXT NOT NULL, created REAL, expires REAL)")
     return c
+
+
+def _migrate_autoincrement(c):
+    """Older databases created `users` without AUTOINCREMENT, so SQLite re-used the id of
+    the most recently deleted account — and anything keyed by that id (sessions, doubts)
+    would attach to the next person who signed up. Rebuild the table once, keeping every
+    row, and start the id counter above every id ever referenced."""
+    sql = (c.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'")
+           .fetchone() or [""])[0] or ""
+    if "AUTOINCREMENT" in sql.upper():
+        return
+    cols = [r[1] for r in c.execute("PRAGMA table_info(users)")]
+    extra = "".join(f", {x}" for x in ("role", "expertise") if x in cols)
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        c.execute("CREATE TABLE users_new(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, "
+                  "email TEXT UNIQUE, pw TEXT, salt TEXT, created REAL"
+                  + (", role TEXT NOT NULL DEFAULT 'student'" if "role" in cols else "")
+                  + (", expertise TEXT NOT NULL DEFAULT ''" if "expertise" in cols else "") + ")")
+        c.execute(f"INSERT INTO users_new(id,name,email,pw,salt,created{extra}) "
+                  f"SELECT id,name,email,pw,salt,created{extra} FROM users")
+        c.execute("DROP TABLE users")
+        c.execute("ALTER TABLE users_new RENAME TO users")
+        hi = c.execute("SELECT MAX(id) FROM users").fetchone()[0] or 0
+        for t, col in (("sessions", "user_id"), ("doubts", "student_id"), ("doubts", "helper_id"),
+                       ("doubts", "answered_by"), ("usage", "user_id")):
+            try:
+                hi = max(hi, c.execute(f"SELECT MAX({col}) FROM {t}").fetchone()[0] or 0)
+            except sqlite3.OperationalError:
+                pass
+        c.execute("DELETE FROM sqlite_sequence WHERE name='users'")
+        c.execute("INSERT INTO sqlite_sequence(name, seq) VALUES('users', ?)", (hi,))
+        c.execute("COMMIT")
+    except Exception:
+        c.execute("ROLLBACK")
+        raise
 
 
 def _hash(pw, salt):
@@ -375,7 +417,14 @@ class SignupReq(BaseModel):
     name: str = Field(max_length=80)
     email: str = Field(max_length=254)
     password: str = Field(min_length=6, max_length=200)
-    _n = field_validator("name")(_strip_nonempty)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v):
+        v = " ".join((v or "").split())     # tabs / no-break / ideographic spaces -> one space
+        if not v:
+            raise ValueError("must not be empty")
+        return v
 
     @field_validator("email")
     @classmethod
@@ -530,15 +579,20 @@ def delete_account(r: DeleteAccountReq, u: Student = Depends(current_user)):
         row = c.execute("SELECT pw,salt FROM users WHERE id=?", (u.id,)).fetchone()
         if not row or _hash(r.password, row[1]) != row[0]:
             return _err(403, "Wrong password.")
-    delete_user(u.email)                       # chunks first: if Qdrant is down, keep the account
-    shutil.rmtree(_user_dir(u.email), ignore_errors=True)
-    with closing(_db()) as c:
-        c.execute("DELETE FROM sessions WHERE user_id=?", (u.id,))
-        c.execute("DELETE FROM doubts WHERE student_id=?", (u.id,))
-        c.execute("UPDATE doubts SET helper_id=NULL WHERE helper_id=? AND status='open'", (u.id,))
-        c.execute("DELETE FROM usage WHERE user_id=?", (u.id,))
-        c.execute("DELETE FROM users WHERE id=?", (u.id,))
-        c.commit()
+    # (a helper answer landing mid-deletion is caught by answer_doubt's re-check)
+    if True:
+        delete_user(u.email)                   # chunks first: if Qdrant is down, keep the account
+        shutil.rmtree(_user_dir(u.email), ignore_errors=True)
+        with closing(_db()) as c:
+            c.execute("DELETE FROM sessions WHERE user_id=?", (u.id,))
+            c.execute("DELETE FROM doubts WHERE student_id=?", (u.id,))
+            # as a helper: open doubts go back to the pool; answered ones keep the
+            # snapshot name but lose the link to this (now unused) id
+            c.execute("UPDATE doubts SET helper_id=NULL WHERE helper_id=?", (u.id,))
+            c.execute("UPDATE doubts SET answered_by=NULL WHERE answered_by=?", (u.id,))
+            c.execute("DELETE FROM usage WHERE user_id=?", (u.id,))
+            c.execute("DELETE FROM users WHERE id=?", (u.id,))
+            c.commit()
     return {"ok": True}
 
 
@@ -745,7 +799,8 @@ class ExpertiseReq(BaseModel):
 
 
 def _first(name: str) -> str:
-    return (name or "").strip().split(" ")[0] or "A student"
+    parts = (name or "").split()            # every kind of Unicode whitespace
+    return parts[0] if parts else "A student"
 
 
 def _doubt_view(row: dict, viewer: Student) -> dict:
@@ -754,7 +809,8 @@ def _doubt_view(row: dict, viewer: Student) -> dict:
     out = {k: row[k] for k in ("id", "question", "attempt", "decision", "note", "status",
                                "created", "answer", "answered_at", "helpful")}
     out["sources"] = json.loads(row["sources"] or "[]")
-    out["helper_name"] = row.get("helper_name")
+    out["helper_name"] = row.get("helper_name") or row.get("answered_name") or (
+        "a helper (account removed)" if row.get("status") == "answered" else None)
     out["mine"] = row["student_id"] == viewer.id
     if not out["mine"]:
         out["student_name"] = _first(row.get("student_name"))
@@ -778,18 +834,26 @@ def ask_helper(r: DoubtReq, u: Student = Depends(current_user)):
         open_n = c.execute("SELECT COUNT(*) FROM doubts WHERE student_id=? AND status='open'",
                            (u.id,)).fetchone()[0]
         if open_n >= MAX_OPEN_DOUBTS:
-            return _err(429, "You already have 20 open doubts. Wait for replies or withdraw some.")
+            return _err(429, f"You already have {MAX_OPEN_DOUBTS} open doubts. "
+                             "Wait for replies or withdraw some.")
         helpers = _rows(c, "SELECT u.id, u.name, u.email, u.expertise, "
                            "(SELECT COUNT(*) FROM doubts d WHERE d.helper_id=u.id AND d.status='open') "
                            "AS open_count FROM users u WHERE u.role='helper' AND u.id<>?", (u.id,))
     helper = route_doubt(r.question, r.sources, helpers)
     with closing(_db()) as c:
+        c.isolation_level = None
+        c.execute("BEGIN IMMEDIATE")               # count + insert can't interleave
         cur = c.execute("INSERT INTO doubts(student_id,student_email,question,attempt,decision,"
-                        "sources,note,status,helper_id,created) VALUES(?,?,?,?,?,?,?,'open',?,?)",
+                        "sources,note,status,helper_id,created) "
+                        "SELECT ?,?,?,?,?,?,?,'open',?,? WHERE (SELECT COUNT(*) FROM doubts "
+                        "WHERE student_id=? AND status='open') < ?",
                         (u.id, u.email, r.question, r.attempt, r.decision,
                          json.dumps(r.sources), r.note.strip(), helper["id"] if helper else None,
-                         time.time()))
-        c.commit()
+                         time.time(), u.id, MAX_OPEN_DOUBTS))
+        c.execute("COMMIT")
+        if cur.rowcount != 1:
+            return _err(429, f"You already have {MAX_OPEN_DOUBTS} open doubts. "
+                             "Wait for replies or withdraw some.")
         row = _rows(c, _DOUBT_SELECT + "WHERE d.id=?", (cur.lastrowid,))[0]
     return {"ok": True, "doubt": _doubt_view(row, u),
             "routed_to": helper["name"] if helper else None}
@@ -815,6 +879,8 @@ def list_doubts(u: Student = Depends(current_user)):
 
 
 def _load_doubt(c, doubt_id: int) -> dict | None:
+    if not (1 <= doubt_id <= 2 ** 63 - 1):
+        return None
     rows = _rows(c, _DOUBT_SELECT + "WHERE d.id=?", (doubt_id,))
     return rows[0] if rows else None
 
@@ -826,19 +892,28 @@ def answer_doubt(doubt_id: int, r: DoubtAnswerReq, u: Student = Depends(current_
     student's own knowledge base."""
     with closing(_db()) as c:
         d = _load_doubt(c, doubt_id)
-        if not d or d["status"] == "closed":
-            return _err(404, "That doubt doesn't exist or was withdrawn.")
-        allowed = (d["helper_id"] == u.id and u.role == "helper") or u.is_admin
-        if not allowed or d["student_id"] == u.id:
-            return _err(403, "This doubt isn't assigned to you.")
-        c.execute("UPDATE doubts SET answer=?, status='answered', answered_by=?, answered_at=?, "
-                  "helper_id=COALESCE(helper_id, ?) WHERE id=?",
-                  (r.answer.strip(), u.id, time.time(), u.id, doubt_id))
-        c.commit()
-        answered = _rows(c, "SELECT d.id, d.question, d.answer, h.name AS helper_name FROM doubts d "
-                            "LEFT JOIN users h ON h.id = d.answered_by "
-                            "WHERE d.student_id=? AND d.status='answered'", (d["student_id"],))
-    index_helper_answers(d["student_email"], answered)
+    if not d or d["status"] == "closed":
+        return _err(404, "That doubt doesn't exist or was withdrawn.")
+    allowed = u.is_admin or (u.role == "helper" and d["helper_id"] == u.id and
+                             (d["status"] == "open" or d["answered_by"] == u.id))
+    if not allowed or d["student_id"] == u.id:
+        return _err(403, "This doubt isn't assigned to you.")
+    with _doc_lock(d["student_email"], HELPER_DOC):     # one rebuild at a time per student
+        if not _account_exists(d["student_id"]):
+            return _err(404, "That student's account no longer exists.")
+        now = time.time()
+        with closing(_db()) as c:
+            c.execute("UPDATE doubts SET answer=?, status='answered', answered_by=?, answered_name=?, "
+                      "answered_at=COALESCE(answered_at, ?), edited_at=CASE WHEN answered_at IS NULL "
+                      "THEN NULL ELSE ? END, helper_id=COALESCE(helper_id, ?) WHERE id=?",
+                      (r.answer.strip(), u.id, u.name, now, now, u.id, doubt_id))
+            c.commit()
+            answered = _rows(c, "SELECT id, question, answer, answered_name AS helper_name FROM doubts "
+                                "WHERE student_id=? AND status='answered'", (d["student_id"],))
+        index_helper_answers(d["student_email"], answered)
+        if not _account_exists(d["student_id"]):        # deleted while we were indexing
+            delete_doc(d["student_email"], HELPER_DOC)
+            return _err(404, "That student's account no longer exists.")
     return {"ok": True}
 
 
@@ -851,8 +926,11 @@ def doubt_feedback(doubt_id: int, r: FeedbackReq, u: Student = Depends(current_u
             return _err(404, "Not found.")
         if d["status"] != "answered":
             return _err(400, "You can rate an answer once a helper has replied.")
-        c.execute("UPDATE doubts SET helpful=? WHERE id=?", (1 if r.helpful else 0, doubt_id))
+        cur = c.execute("UPDATE doubts SET helpful=? WHERE id=? AND helpful IS NULL",
+                        (1 if r.helpful else 0, doubt_id))
         c.commit()
+        if cur.rowcount == 0:
+            return _err(409, "You've already rated this answer.")
     return {"ok": True}
 
 

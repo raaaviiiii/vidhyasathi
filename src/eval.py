@@ -28,8 +28,8 @@ from collections import Counter
 from pathlib import Path
 
 from src import config
-from src.answer import (GROUND_CHECK, _words, _STOP, answer, ask_llm, build_context,
-                        call_llm)
+from src.answer import (GROUND_CHECK, _words, _STOP, _retrieve, answer, ask_llm,
+                        build_context, call_llm)
 from src.config import BASE_DIR, COLLECTION_NAME, RETRIEVE_CANDIDATES
 from src.store import get_client, user_filter
 
@@ -57,6 +57,16 @@ OFF_MATERIAL = [
     "Who wrote the Indian national anthem?",
     "What is a black hole?",
     "How do vaccines train the immune system?",
+    "What is the speed of light in a vacuum?",
+    "Who was the first person to walk on the Moon?",
+    "How do bees make honey?",
+    "What is the currency of Japan?",
+    "Explain how a rainbow forms.",
+    "What does a cardiologist specialise in?",
+    "How is glass made?",
+    "Name the planets of the solar system in order.",
+    "What is the main ingredient of guacamole?",
+    "Explain how tides are caused.",
 ]
 
 GEN_PROMPT = (
@@ -89,10 +99,16 @@ def user_chunks(user: str) -> list[dict]:
             pl = p.payload or {}
             if pl.get("doc") == "__helper_answers__":
                 continue
-            out.append({"chunk_id": pl.get("chunk_id"), "source": pl.get("source", ""),
+            out.append({"chunk_id": _eid(pl), "source": pl.get("source", ""),
                         "loc": pl.get("loc", ""), "text": pl.get("text", ""), "doc": pl.get("doc")})
         if offset is None:
             return out
+
+
+def _eid(payload_or_hit: dict) -> str:
+    """Evaluation id of a passage: document + chunk, so two documents with the same
+    stem (notes.txt / notes.md) can never be confused."""
+    return f"{payload_or_hit.get('doc') or payload_or_hit.get('source', '')}::{payload_or_hit.get('chunk_id')}"
 
 
 def _tokens(text: str) -> list[str]:
@@ -145,10 +161,15 @@ def _parse_qa(text: str):
     return q.group(1).strip(), (a.group(1).strip() if a else "")
 
 
-def make_set(user: str, n: int = 30, negatives: int = 15, seed: int = 7) -> list[dict]:
-    chunks = [c for c in user_chunks(user) if len(c["text"]) >= 120]
-    if not chunks:
+def make_set(user: str, n: int = 30, negatives: int = 15, seed: int = 7,
+             progress=print) -> list[dict]:
+    every = user_chunks(user)
+    if not every:
         raise SystemExit(f"No indexed material for {user!r}. Upload notes in the app first.")
+    chunks = [c for c in every if len(c["text"]) >= 120]
+    if not chunks:
+        raise SystemExit(f"All {len(every)} passages for {user!r} are very short (under 120 "
+                         "characters), so there's nothing to write questions from. Upload fuller notes.")
     rng = random.Random(seed)
     by_src: dict[str, list] = {}
     for c in chunks:
@@ -168,7 +189,18 @@ def make_set(user: str, n: int = 30, negatives: int = 15, seed: int = 7) -> list
         items.append({"id": f"in{i}", "question": q, "in_material": True,
                       "expected_chunk": c["chunk_id"], "expected_source": c["source"],
                       "expected_loc": c["loc"], "reference": ref})
-    for j, q in enumerate(rng.sample(OFF_MATERIAL, min(negatives, len(OFF_MATERIAL))), start=1):
+    # "off-material" must really be off THIS student's material: a biology student's
+    # notes may well cover photosynthesis. Drop any that retrieve a confident match.
+    pool, kept, dropped = rng.sample(OFF_MATERIAL, len(OFF_MATERIAL)), [], []
+    for q in pool:
+        if len(kept) >= negatives:
+            break
+        _, score, _ = _retrieve(q, user=user)
+        (dropped if score >= config.HELP_SCORE else kept).append(q)
+    if dropped:
+        progress(f"Skipped {len(dropped)} off-material question(s) your notes may cover: "
+                 + "; ".join(dropped))
+    for j, q in enumerate(kept, start=1):
         items.append({"id": f"off{j}", "question": q, "in_material": False})
     return items
 
@@ -202,20 +234,28 @@ def run_set(items: list[dict], user: str, judge: bool = True, progress=print) ->
     for n, it in enumerate(items, start=1):
         q = it["question"]
         row = {"id": it.get("id"), "question": q, "in_material": bool(it.get("in_material"))}
+        # ranking quality: the full candidate list, re-ranked, vs vector order vs BM25
         cands = retrieve(q, top_k=max(RETRIEVE_CANDIDATES, 20), user=user)
-        vec_ids = [c["chunk_id"] for c in cands]
+        for c in cands:
+            c["eid"] = _eid(c)
+        vec_ids = [c["eid"] for c in cands]
         ranked = rerank(q, [dict(c) for c in cands], top_k=len(cands))
-        pipe_ids = [c["chunk_id"] for c in ranked]
-        row["top_score"] = max((c["score"] for c in ranked[:config.TOP_K]), default=0.0)
-        row["check"] = _check(q, ranked[:config.TOP_K]) if ranked else False
-        if row["in_material"] and it.get("expected_chunk"):
-            target = it["expected_chunk"]
+        pipe_ids = [c["eid"] for c in ranked]
+        # the gate: replay EXACTLY what the app sees (same retrieval path, same score)
+        hits, top_score, _ = _retrieve(q, user=user)
+        row["top_score"] = top_score
+        row["check"] = _check(q, hits) if hits else False
+        target = it.get("expected_chunk")
+        if row["in_material"] and target and target not in by_id:
+            row["stale"] = True                 # its passage was deleted or re-uploaded since
+        elif row["in_material"] and target:
             bm = bm25.scores(q)
             bm_ids = [chunks[i]["chunk_id"] for i in sorted(range(len(chunks)), key=lambda i: -bm[i])]
             row.update(rr_pipeline=reciprocal_rank(pipe_ids, target),
                        rr_vector=reciprocal_rank(vec_ids, target),
                        rr_bm25=reciprocal_rank(bm_ids, target),
                        hit5_pipeline=hit_at(pipe_ids, target, 5),
+                       hit5_vector=hit_at(vec_ids, target, 5),
                        hit5_bm25=hit_at(bm_ids, target, 5))
         t0 = time.time()
         res = answer(q, user=user)
@@ -245,7 +285,8 @@ def _mean(xs):
 
 
 def summarise(rows: list[dict]) -> dict:
-    pos = [r for r in rows if r["in_material"]]
+    stale = [r for r in rows if r.get("stale")]
+    pos = [r for r in rows if r["in_material"] and not r.get("stale")]
     neg = [r for r in rows if not r["in_material"]]
     ranked = [r for r in pos if "rr_pipeline" in r]
     lat = sorted(r["latency"] for r in rows)
@@ -255,6 +296,8 @@ def summarise(rows: list[dict]) -> dict:
         "mrr_vector_only": _mean(r["rr_vector"] for r in ranked),
         "mrr_bm25_baseline": _mean(r["rr_bm25"] for r in ranked),
         "recall5_pipeline": _mean(r["hit5_pipeline"] for r in ranked),
+        "recall5_vector_only": _mean(r["hit5_vector"] for r in ranked),
+        "stale_items": len(stale),
         "recall5_bm25_baseline": _mean(r["hit5_bm25"] for r in ranked),
         "answer_accuracy": _mean(r["correct"] for r in pos),
         "answered_rate": _mean(r["answered"] for r in pos),
@@ -274,10 +317,14 @@ def summarise(rows: list[dict]) -> dict:
 def sweep(rows: list[dict]) -> dict:
     """Replay the gate at other cut-offs. Grounded = score >= strong, or score >= help
     and the groundedness check said yes. Honesty first: only settings that refuse at
-    least 95% of off-material questions are eligible; among those, maximise in-material
-    answered rate, then the share of checks skipped (speed)."""
-    pos = [r for r in rows if r["in_material"]]
+    least 95% of off-material questions are eligible (if none do, only the most honest
+    ones are); among those, maximise in-material answered rate, then checks skipped
+    (speed), then closeness to the current setting."""
+    pos = [r for r in rows if r["in_material"] and not r.get("stale")]
     neg = [r for r in rows if not r["in_material"]]
+    if not neg:
+        return {"recommended": None, "current": None, "grid": [], "honesty_target_met": None,
+                "note": "Add off-material questions to tune the thresholds."}
     grid = []
     for help_cut in [x / 100 for x in range(20, 46, 5)]:
         for strong in [x / 100 for x in range(45, 81, 5)]:
@@ -286,19 +333,23 @@ def sweep(rows: list[dict]) -> dict:
 
             def grounded(r):
                 return r["top_score"] >= strong or (r["top_score"] >= help_cut and r["check"])
-            ans_rate = _mean(grounded(r) for r in pos) or 0.0
-            refuse_rate = _mean(not grounded(r) for r in neg) or 0.0
-            skipped = _mean(r["top_score"] >= strong for r in rows) or 0.0
-            grid.append({"help": help_cut, "strong": strong, "answered_in_material": ans_rate,
-                         "refused_off_material": refuse_rate, "checks_skipped": skipped})
-    ok = [g for g in grid if g["refused_off_material"] >= 0.95] or grid
-    # ties go to the setting closest to the current one (don't move cut-offs for nothing)
-    best = max(ok, key=lambda g: (g["answered_in_material"], g["checks_skipped"],
-                                  -abs(g["help"] - config.HELP_SCORE)
-                                  - abs(g["strong"] - config.STRONG_SKIP_SCORE)))
+            grid.append({"help": help_cut, "strong": strong,
+                         "answered_in_material": _mean(grounded(r) for r in pos),
+                         "refused_off_material": _mean(not grounded(r) for r in neg),
+                         "checks_skipped": _mean(r["top_score"] >= strong for r in rows)})
+    met = [g for g in grid if g["refused_off_material"] >= 0.95]
+    if met:
+        pool = met
+    else:
+        most = max(g["refused_off_material"] for g in grid)
+        pool = [g for g in grid if g["refused_off_material"] == most]
+    best = max(pool, key=lambda g: (g["answered_in_material"] or 0, g["checks_skipped"] or 0,
+                                    -abs(g["help"] - config.HELP_SCORE)
+                                    - abs(g["strong"] - config.STRONG_SKIP_SCORE)))
     current = next((g for g in grid if abs(g["help"] - config.HELP_SCORE) < 1e-9
                     and abs(g["strong"] - config.STRONG_SKIP_SCORE) < 1e-9), None)
-    return {"recommended": best, "current": current, "grid": grid}
+    return {"recommended": best, "current": current, "grid": grid,
+            "honesty_target_met": bool(met)}
 
 
 # ----------------------------------------------------------------------------- report
@@ -308,6 +359,10 @@ def _pct(x):
 
 def _num(x):
     return "—" if x is None else f"{x:.2f}"
+
+
+def _sec(x):
+    return "—" if x is None else f"{x} s"
 
 
 def report_md(result: dict) -> str:
@@ -333,7 +388,7 @@ def report_md(result: dict) -> str:
         "| Method | MRR@10 | Recall@5 |",
         "|---|---|---|",
         f"| Vector + re-rank (the app) | {_num(m['mrr_pipeline'])} | {_pct(m['recall5_pipeline'])} |",
-        f"| Vector only | {_num(m['mrr_vector_only'])} | — |",
+        f"| Vector only | {_num(m['mrr_vector_only'])} | {_pct(m['recall5_vector_only'])} |",
         f"| BM25 keyword baseline | {_num(m['mrr_bm25_baseline'])} | {_pct(m['recall5_bm25_baseline'])} |",
         "",
         "## Honesty and answers",
@@ -341,17 +396,30 @@ def report_md(result: dict) -> str:
         f"- Off-material questions refused honestly: **{_pct(m['honest_refusal_rate'])}**",
         f"- In-material questions answered: {_pct(m['answered_rate'])} (false refusals {_pct(m['false_refusal_rate'])})",
         f"- Answers citing the right document: {_pct(m['citation_accuracy'])}",
-        f"- Latency: median {m['latency_p50']} s, 90th percentile {m['latency_p90']} s",
+        f"- Latency: median {_sec(m['latency_p50'])}, 90th percentile {_sec(m['latency_p90'])}",
         "",
         "## Confidence-gate thresholds",
         "",
-        f"- Current (HELP_SCORE={config.HELP_SCORE}, STRONG_SKIP_SCORE={config.STRONG_SKIP_SCORE}): "
-        + (f"answers {_pct(cur['answered_in_material'])} of in-material, refuses "
-           f"{_pct(cur['refused_off_material'])} of off-material, skips {_pct(cur['checks_skipped'])} of checks"
-           if cur else "not on the sweep grid"),
-        f"- Recommended: **HELP_SCORE={rec['help']}, STRONG_SKIP_SCORE={rec['strong']}** — answers "
-        f"{_pct(rec['answered_in_material'])} of in-material, refuses {_pct(rec['refused_off_material'])} "
-        f"of off-material, skips {_pct(rec['checks_skipped'])} of checks",
+    ]
+    if rec is None:
+        lines.append(f"- {sw.get('note', 'Not enough data to tune thresholds.')}")
+    else:
+        lines += [
+            f"- Current (HELP_SCORE={config.HELP_SCORE}, STRONG_SKIP_SCORE={config.STRONG_SKIP_SCORE}): "
+            + (f"answers {_pct(cur['answered_in_material'])} of in-material, refuses "
+               f"{_pct(cur['refused_off_material'])} of off-material, skips {_pct(cur['checks_skipped'])} of checks"
+               if cur else "not on the sweep grid"),
+            f"- Recommended: **HELP_SCORE={rec['help']}, STRONG_SKIP_SCORE={rec['strong']}** — answers "
+            f"{_pct(rec['answered_in_material'])} of in-material, refuses {_pct(rec['refused_off_material'])} "
+            f"of off-material, skips {_pct(rec['checks_skipped'])} of checks",
+        ]
+        if not sw.get("honesty_target_met"):
+            lines.append("- ⚠️ No setting refuses 95% of off-material questions — this is the most "
+                         "honest one available. Look at the misses below before changing anything.")
+    if m.get("stale_items"):
+        lines.append(f"- {m['stale_items']} question(s) point at passages no longer in your material "
+                     "(deleted or re-uploaded) and were left out of retrieval scores — re-run `make`.")
+    lines += [
         "",
         "## Misses worth reading",
         "",
@@ -391,7 +459,19 @@ def main(argv=None):
               f"questions, then: python -m src.eval run --user {user}")
         return
     path = Path(a.set) if a.set else default_set
-    items = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    if not path.exists():
+        raise SystemExit(f"No test set at {path}. Create one first: python -m src.eval make --user {user}")
+    items = []
+    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            it = json.loads(line)
+        except json.JSONDecodeError as e:
+            raise SystemExit(f"{path}:{lineno}: not valid JSON ({e.msg}). Fix or delete that line.")
+        if not isinstance(it, dict) or not str(it.get("question", "")).strip():
+            raise SystemExit(f"{path}:{lineno}: every line needs a non-empty \"question\".")
+        items.append(it)
     print(f"Running {len(items)} questions from {path} …")
     result = run_set(items, user, judge=not a.no_judge)
     stamp = time.strftime("%Y%m%d-%H%M")

@@ -196,3 +196,36 @@ def test_account_deletion_cleans_up_doubts(world):
     ask(c, stu2, "Explain gcd of two numbers")
     c.post("/api/account/delete", headers=H(t["maths"]), json={"password": PW})
     assert len(doubts(c, t["admin"])["inbox"]) == 1
+
+
+def test_existing_database_is_migrated_so_ids_are_never_reused(app_client):
+    """Ravi's live users.db predates AUTOINCREMENT: the one-off migration must keep every
+    account (and its password) and start new ids above every id ever referenced."""
+    import sqlite3, hashlib
+    db = app_client.tmp / "users.db"
+    old = sqlite3.connect(db)
+    old.execute("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT, email TEXT UNIQUE, "
+                "pw TEXT, salt TEXT, created REAL)")
+    salt = "abcd"
+    pw = hashlib.pbkdf2_hmac("sha256", PW.encode(), salt.encode(), 100_000).hex()
+    old.executemany("INSERT INTO users VALUES(?,?,?,?,?,?)",
+                    [(1, "Ravi", "ravi@x.com", pw, salt, 1.0), (2, "Krishna", "k@x.com", pw, salt, 2.0)])
+    old.execute("CREATE TABLE sessions(token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, "
+                "email TEXT NOT NULL, created REAL, expires REAL)")
+    old.execute("INSERT INTO sessions VALUES('stale', 5, 'gone@x.com', 0, 9e12)")   # id 5 was deleted
+    old.commit(); old.close()
+    c = app_client
+    r = c.post("/api/login", json={"email": "ravi@x.com", "password": PW})
+    assert r.status_code == 200, "existing account lost in migration"
+    con = sqlite3.connect(db)
+    sql = con.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]
+    assert "AUTOINCREMENT" in sql.upper()
+    assert [x[0] for x in con.execute("SELECT email FROM users ORDER BY id")] == ["ravi@x.com", "k@x.com"]
+    con.close()
+    t = signup(c, "new@x.com")
+    me = c.get("/api/me", headers=H(t)).json()
+    con = sqlite3.connect(db)
+    new_id = con.execute("SELECT id FROM users WHERE email='new@x.com'").fetchone()[0]
+    con.close()
+    assert new_id > 5, "a new account could inherit references to deleted id 5"
+    assert me["email"] == "new@x.com"
