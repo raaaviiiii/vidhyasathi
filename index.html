@@ -321,7 +321,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
   <main class="main">
     <div class="bgm" id="bgMandala"></div>
     <header class="topbar">
-      <button class="menubtn" type="button" aria-label="Open menu" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="#d9b45a" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <button class="menubtn" type="button" aria-label="Open menu" aria-expanded="false" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="#d9b45a" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <div class="pill" aria-live="polite"><span class="dot" id="statusDot"></span><span id="statusText">Active</span></div>
       <div class="acct" id="acctChip" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-label="Account menu" onclick="toggleAcct(event)"><div class="av">R<span class="pres"></span></div><span class="nm">Ravi</span>
         <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round"/></svg></div>
@@ -344,7 +344,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
           <button class="chip" data-mode="teach" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><path d="M2 3.4C2 2.9 2.4 2.5 3 2.6L7.4 3.3V13.6L3 12.9C2.4 12.8 2 12.4 2 11.9ZM14 3.4C14 2.9 13.6 2.5 13 2.6L8.6 3.3V13.6L13 12.9C13.6 12.8 14 12.4 14 11.9Z" fill="none" stroke="#d9b45a" stroke-width="1" stroke-linejoin="round"/></svg>Teach Me</button>
           <button class="chip" data-mode="exam" onclick="setMode(this)"><svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="3.2" fill="none" stroke="#d9b45a" stroke-width="1.1"/><path d="M4.8 8 7 10.2l4.4-4.8" fill="none" stroke="#d9b45a" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Exam &amp; Practice</button>
           <span class="csep"></span>
-          <div class="toggle" id="webToggle" role="switch" tabindex="0" aria-pressed="false" aria-label="Web fallback" onclick="toggleWeb(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWeb(this)}"><span class="track"><b></b></span>Web fallback</div>
+          <div class="toggle" id="webToggle" role="switch" tabindex="0" aria-checked="false" aria-label="Web fallback" onclick="toggleWeb(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWeb(this)}"><span class="track"><b></b></span>Web fallback</div>
         </div>
         <button class="send" type="button" aria-label="Send" onclick="send()"><svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 16.5V6M6.5 10.5 11 5.8l4.5 4.7" fill="none" stroke="#231604" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
@@ -419,7 +419,10 @@ function safeUrl(u){try{const x=new URL(String(u||''),location.href);return /^ht
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
 const SAFE_TAGS=new Set(['P','BR','STRONG','B','EM','I','U','DEL','S','UL','OL','LI','H1','H2','H3','H4','H5','H6','CODE','PRE','BLOCKQUOTE','TABLE','THEAD','TBODY','TR','TH','TD','HR','A','SPAN','DIV','SUP','SUB']);
 const DROP_TAGS=/^(SCRIPT|STYLE|IFRAME|FRAME|OBJECT|EMBED|SVG|MATH|TEMPLATE|NOSCRIPT|TEXTAREA|SELECT|OPTION|INPUT|FORM|BUTTON|IMG|PICTURE|SOURCE|VIDEO|AUDIO|TRACK|LINK|META|BASE|TITLE)$/;
-function sanitizeInto(container,html){
+// Classes untrusted HTML may keep: only markdown's code-language hint. (Legacy saved
+// chats may also keep the transcript's own classes — never layout/overlay classes.)
+const LEGACY_CLASSES=/^(msg|user|bot|refuse|web|who|bubble|meta|tag|ok|warn|no|note|em|srcline|webdisc|examq|q|a|cite|katex[\w-]*|m[a-z]+)$/;
+function sanitizeInto(container,html,legacy){
   const t=document.createElement('template');t.innerHTML=html;
   (function walk(node){
     for(const c of [...node.children]){
@@ -427,13 +430,14 @@ function sanitizeInto(container,html){
         if(DROP_TAGS.test(c.tagName)){c.remove();continue;}
         walk(c);c.replaceWith(...c.childNodes);continue;
       }
-      for(const a of [...c.attributes]){
-        const n=a.name.toLowerCase();
-        if(n==='href'&&c.tagName==='A'){const u=safeUrl(a.value);if(u){c.setAttribute('href',u);c.setAttribute('target','_blank');c.setAttribute('rel','noopener noreferrer');}else c.removeAttribute('href');continue;}
-        if(n==='class'&&/^[\w\- ]*$/.test(a.value))continue;
-        if(n==='align'&&(c.tagName==='TH'||c.tagName==='TD'))continue;
-        c.removeAttribute(a.name);
-      }
+      const href=c.tagName==='A'?safeUrl(c.getAttribute('href')):'';
+      const cls=(c.getAttribute('class')||'').split(/\s+/).filter(k=>
+        legacy?LEGACY_CLASSES.test(k):(c.tagName==='CODE'&&/^language-[\w-]+$/.test(k)));
+      const align=(c.tagName==='TH'||c.tagName==='TD')?c.getAttribute('align'):null;
+      for(const a of [...c.attributes])c.removeAttribute(a.name);   // strip EVERYTHING, then
+      if(href){c.setAttribute('href',href);c.setAttribute('target','_blank');c.setAttribute('rel','noopener noreferrer');}
+      if(cls.length)c.setAttribute('class',cls.join(' '));
+      if(align&&/^(left|right|center)$/.test(align))c.setAttribute('align',align);
       walk(c);
     }
   })(t.content);
@@ -459,12 +463,17 @@ function gildInto(root){
     frag.append(s.slice(last));n.replaceWith(frag);
   }
 }
-const MATH_RE=/\$\$[\s\S]+?\$\$|\$[^\$\n]+?\$/g;
+// Inline math must hug its dollars ("$x^2$", not "$5 per term … $10"): opening $ is
+// followed by non-space, closing $ is preceded by non-space and not followed by a digit.
+const MATH_RE=/\$\$[\s\S]+?\$\$|\$(?=\S)[^\$\n]+?(?<=\S)\$(?!\d)/g;
 /** Markdown + citations + math into `container`, safely. */
 function renderMd(container,text){
   text=String(text??'');
   const math=[];
-  const withPh=text.replace(MATH_RE,m=>{math.push(m);return '⁣M'+(math.length-1)+'⁣';});
+  const nonce=Math.random().toString(36).slice(2,10);              // can't be guessed by model text
+  const withPh=text.replace(MATH_RE,m=>{
+    math.push(m);return '⁣'+nonce+(math.length-1)+'⁣';});
+  const PH=new RegExp('⁣'+nonce+'(\\d+)⁣','g');
   let html;
   if(window.marked){try{html=marked.parse(withPh,{breaks:true,gfm:true});}catch(e){html=null;}}
   if(html==null)html=esc(withPh).replace(/\n/g,'<br>');      // offline: plain, escaped text
@@ -473,7 +482,7 @@ function renderMd(container,text){
   if(math.length){                                              // math back in, as TEXT
     const w=document.createTreeWalker(container,NodeFilter.SHOW_TEXT);const nodes=[];
     while(w.nextNode())nodes.push(w.currentNode);
-    for(const n of nodes)if(n.nodeValue.includes('⁣'))n.nodeValue=n.nodeValue.replace(/⁣M(\d+)⁣/g,(m,i)=>math[+i]??'');
+    for(const n of nodes)if(n.nodeValue.includes(nonce))n.nodeValue=n.nodeValue.replace(PH,(m,i)=>math[+i]??m);
   }
   return container;
 }
@@ -510,8 +519,9 @@ async function api(path,{method='POST',body,form,auth=true}={}){
   const msg=(data&&(data.error||(typeof data.detail==='string'&&data.detail)))||statusMessage(res.status);
   if(res.status===401&&auth){sessionExpired(msg);throw new ApiError(401,msg);}
   if(!res.ok){setStatus(res.status===503?'degraded':'ok');throw new ApiError(res.status,msg);}
+  if(data===null||typeof data!=='object'){setStatus('degraded');throw new ApiError(res.status,'The server sent an unexpected response. If you opened a share link, refresh the page and try again.');}
   setStatus('ok');
-  if(data&&data.ok===false&&!('indexed' in data))throw new ApiError(res.status,data.error||'Something went wrong.');
+  if(data.ok===false&&!('indexed' in data))throw new ApiError(res.status,data.error||'Something went wrong.');
   return data||{};
 }
 const post=(path,body)=>api(path,{body});
@@ -538,7 +548,8 @@ function chipsFor(m){document.querySelectorAll('.chip').forEach(c=>c.classList.t
 // composer chips change the mode for this session only; the saved default lives in Settings
 function setMode(btn){chipsFor(btn.dataset.mode);}
 function setModeByName(m){chipsFor(m);}
-function toggleWeb(t){t.classList.toggle('on');t.setAttribute('aria-pressed',t.classList.contains('on'));}
+function syncWebSwitch(){const t=document.getElementById('webToggle');if(t)t.setAttribute('aria-checked',t.classList.contains('on')?'true':'false');}
+function toggleWeb(t){t.classList.toggle('on');syncWebSwitch();}
 function starter(t){const i=document.getElementById('input');i.value=t;auto(i);i.focus()}
 function resetTranscript(){
   const t=document.getElementById('transcript');t.replaceChildren();t.classList.add('hidden');
@@ -554,7 +565,15 @@ function reveal(){document.getElementById('hero').classList.add('hidden');docume
 
 /* ---------- transcript (rendered from data) ---------- */
 function msg(kind,whoText){const d=el('div','msg '+kind);d.append(el('div','who',whoText));return d;}
+function validEntry(e){
+  if(!e||typeof e!=='object')return false;
+  if(e.t==='user')return typeof e.text==='string';
+  if(e.t==='answer'||e.t==='exam'||e.t==='grade')return !!e.r&&typeof e.r==='object';
+  if(e.t==='html')return typeof e.html==='string';
+  return typeof e.msg==='string';
+}
 function pushEntry(e,live){
+  if(!validEntry(e))return null;
   if(live)chatLog.push(e);
   const t=document.getElementById('transcript');
   let node;
@@ -562,7 +581,7 @@ function pushEntry(e,live){
   else if(e.t==='answer')node=answerNode(e.r);
   else if(e.t==='exam')node=examNode(e.r);
   else if(e.t==='grade')node=gradeNode(e.r);
-  else if(e.t==='html'){node=el('div');sanitizeInto(node,e.html);}   // chats saved by older versions
+  else if(e.t==='html'){node=el('div');sanitizeInto(node,String(e.html||''),true);}   // chats saved by older versions
   else node=errorNode(e.msg);
   t.appendChild(node);
   if(live){typeset(node);scrollDown();}
@@ -590,9 +609,9 @@ function answerNode(r){
   if(typeof r.top_score==='number')meta.append(el('span','tag','score '+r.top_score.toFixed(2)));
   if(meta.childNodes.length)d.append(meta);
   if(r.caveat){const n=el('div','note');n.append(el('span','em','↳'),document.createTextNode(' '+String(r.caveat).replace(/^↳\s*/,'')));d.append(n);}
-  if(r.web_used&&r.web_sources&&r.web_sources.length){
+  if(r.web_used&&Array.isArray(r.web_sources)&&r.web_sources.length){
     const w=el('div','webdisc','🌐 Not in your notes — learned from the web, verify before trusting: ');
-    r.web_sources.forEach((s,i)=>{
+    r.web_sources.filter(s=>s&&typeof s==='object').forEach((s,i)=>{
       const u=safeUrl(s.url),label=String(s.url||s.source||'').replace(/^https?:\/\//,'').slice(0,40);
       if(i)w.append(', ');
       if(u){const a=el('a',null,label);a.href=u;a.target='_blank';a.rel='noopener noreferrer';w.append(a);}
@@ -607,7 +626,7 @@ function answerNode(r){
       : ' Not fully sure — you can ask a human helper.'));
     d.append(n);
   }
-  const src=[...new Set((r.sources||[]).map(s=>s.loc?`${s.source} · ${s.loc}`:String(s.source||'')).filter(Boolean))].slice(0,5).join(';  ');
+  const src=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&typeof s==='object').map(s=>s.loc?`${s.source} · ${s.loc}`:String(s.source||'')).filter(Boolean))].slice(0,5).join(';  ');
   if(src)d.append(el('div','srcline','sources: '+src));
   return d;
 }
@@ -617,7 +636,7 @@ function examNode(r){
   if(r.error){d.classList.add('refuse');b.textContent=r.error;}
   else if(!r.grounded){d.classList.add('refuse');b.textContent="I don't have that in the material — I can't set questions on a topic that isn't in your notes.";}
   else if(!(r.items||[]).length){b.textContent="I couldn't put together cited questions on that topic. Try a narrower topic from your notes.";}
-  else (r.items||[]).forEach((it,i)=>{
+  else (r.items||[]).filter(it=>it&&typeof it==='object').forEach((it,i)=>{
     const q=el('div','examq');q.append(el('div','q',`Q${i+1}. ${it.q}`));
     q.append(renderMd(el('div','a'),it.a));b.append(q);
   });
@@ -640,19 +659,19 @@ async function send(){
   const inp=document.getElementById('input');const q=inp.value.trim();
   if(!q||busy)return;
   if(!USER_TOKEN){showLogin('Please sign in to ask questions.');return;}
-  busy=true;const gen=chatGen;
+  busy=true;const gen=chatGen,reqMode=mode;
   reveal();addUser(q);inp.value='';auto(inp);
   ripple();loader();
   try{
-    if(mode==='exam'){
+    if(reqMode==='exam'){
       const r=await post('/api/exam',{topic:q,n:5});
       if(gen!==chatGen)return; renderExam(r);
     }else{
       const web=document.getElementById('webToggle').classList.contains('on');
-      const r=await post('/api/answer',{question:q,mode,web,history:mode==='teach'?history:[]});
+      const r=await post('/api/answer',{question:q,mode:reqMode,web,history:reqMode==='teach'?history:[]});
       if(gen!==chatGen)return;
       renderAnswer(r);
-      if(mode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:String(r.answer||'')});}
+      if(reqMode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:String(r.answer||'')});}
     }
   }catch(e){ if(gen===chatGen&&e.status!==401)renderError(e.message); }
   finally{ if(gen===chatGen)busy=false; }
@@ -665,19 +684,34 @@ async function openGrade(){
   const a=prompt('Paste your answer to be graded:');
   if(!a||!a.trim())return;
   if(!USER_TOKEN){showLogin('Please sign in first.');return;}
-  const gen=chatGen;
+  if(busy){toast('Wait for the current answer to finish.');return;}
+  busy=true;const gen=chatGen;
   reveal();addUser(a,'YOU · answer to "'+q.slice(0,60)+'"');loader();
   try{const r=await post('/api/grade',{question:q,student_answer:a});
     if(gen!==chatGen)return;killLoader();pushEntry({t:'grade',r},true);}
   catch(e){if(gen===chatGen&&e.status!==401)renderError(e.message);}
+  finally{if(gen===chatGen)busy=false;}
 }
 
 /* send ripple */
 function ripple(){const b=document.querySelector('.send');const r=document.createElement('span');r.className='ripple';b.appendChild(r);setTimeout(()=>r.remove(),820);}
 
 /* ---------- modals ---------- */
-function openModal(h,nav){document.getElementById('modal').innerHTML=h;document.getElementById('overlay').classList.add('show');setActiveNav(nav??-1);closeSidebar();}
-function closeModal(){document.getElementById('overlay').classList.remove('show');setActiveNav(baseNav);}
+let modalOpener=null;
+function openModal(h,nav){
+  const ov=document.getElementById('overlay'),md=document.getElementById('modal');
+  const active=document.activeElement;
+  if(!ov.classList.contains('show')||!md.contains(active))modalOpener=(active&&active!==document.body)?active:modalOpener;
+  md.innerHTML=h;ov.classList.add('show');setActiveNav(nav??-1);closeSidebar();closeAcctMenu();
+  md.setAttribute('tabindex','-1');
+  const first=md.querySelector('button,[href],input,[role="button"],details summary,[tabindex="0"]');
+  (first||md).focus();
+}
+function closeModal(){
+  document.getElementById('overlay').classList.remove('show');setActiveNav(baseNav);
+  if(modalOpener&&document.contains(modalOpener)&&!document.getElementById('modal').contains(modalOpener))modalOpener.focus();
+  modalOpener=null;
+}
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),3200);}
 
 function openMaterial(){
@@ -691,7 +725,7 @@ function setupDrop(){const d=document.getElementById('drop');if(!d)return;
  ['dragover','dragenter'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('drag')}));
  ['dragleave'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('drag')}));
  d.addEventListener('drop',ev=>{ev.preventDefault();d.classList.remove('drag');if(ev.dataTransfer.files[0])doUpload(ev.dataTransfer.files[0])});
- d.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();document.getElementById('file').click();}});
+
 }
 async function listMaterial(){
  const box=()=>document.getElementById('doclist');
@@ -715,7 +749,7 @@ async function delMaterial(name){
  if(!confirm('Remove "'+name+'" from your material? This deletes its indexed chunks too.'))return;
  try{const r=await post('/api/material/delete',{name});toast(r.ok?('Removed '+name):(r.error||'Could not remove'));}
  catch(e){toast(e.status===404?(name+' was already removed.'):("Couldn't remove "+name+': '+e.message));}
- listMaterial();
+ await listMaterial();
 }
 async function doUpload(file){
  if(!file)return;
@@ -725,7 +759,7 @@ async function doUpload(file){
   if(r.indexed){toast('Indexed '+r.name+' ✓ ('+(r.chunks||0)+' chunks)'+((r.warnings&&r.warnings.length)?' — '+r.warnings.join(' '):''));}
   else toast("Couldn't index "+(r.name||file.name)+' — '+(r.error||'indexing failed'));
  }catch(e){toast('Upload failed — '+e.message);}
- listMaterial();
+ await listMaterial();
 }
 function openTrust(){
  openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">✕</span><h2>Trust &amp; citations</h2><div class="sub">How to read what Vidhyāsathi tells you.</div><div class="info">
@@ -763,9 +797,11 @@ function openSettings(){
  <div class="trow" style="margin-top:8px"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>`,-1);
  document.querySelector('.footer').classList.add('on');
 }
-function setDefaultMode(m){localStorage.setItem('vs_mode',m);setModeByName(m);openSettings();}
+function setDefaultMode(m){localStorage.setItem('vs_mode',m);setModeByName(m);openSettings();
+ const b=[...document.querySelectorAll('#modal .btn')].find(x=>x.textContent===({quick:'Quick',teach:'Teach',exam:'Exam'})[m]);if(b)b.focus();}
 function toggleWebDefault(){const on=localStorage.getItem('vs_web')!=='1';localStorage.setItem('vs_web',on?'1':'0');
- const wt=document.getElementById('webToggle');if(wt)wt.classList.toggle('on',on);openSettings();}
+ const wt=document.getElementById('webToggle');if(wt)wt.classList.toggle('on',on);syncWebSwitch();openSettings();
+ const b=document.getElementById('webDefBtn');if(b)b.focus();}
 async function doChangePassword(){const o=document.getElementById('pwOld').value,n=document.getElementById('pwNew').value,m=document.getElementById('pwMsg');
  if(!o||!n){m.textContent='Fill both fields.';return;}m.textContent='Updating…';m.style.color='var(--t3)';
  try{await post('/api/account/password',{old_password:o,new_password:n});m.textContent='Password updated ✓';m.style.color='#7bb08a';}
@@ -779,7 +815,7 @@ async function doDeleteAccount(){const pw=document.getElementById('delPw').value
 }
 
 /* ---------- recent chats (per account, stored as data) ---------- */
-function loadChats(){try{const c=JSON.parse(localStorage.getItem('vs_chats')||'[]');return Array.isArray(c)?c:[];}catch(e){return [];}}
+function loadChats(){try{const c=JSON.parse(localStorage.getItem('vs_chats')||'[]');return Array.isArray(c)?c.filter(x=>x&&typeof x==='object'):[];}catch(e){return [];}}
 function myChats(){return loadChats().filter(c=>c&&(!c.owner||c.owner===USER_EMAIL));}
 function clearChats(){
   const others=loadChats().filter(c=>c&&c.owner&&c.owner!==USER_EMAIL);
@@ -794,18 +830,17 @@ function openRecent(){
    const r=el('div','r',c.title||'Chat');r.tabIndex=0;r.setAttribute('role','button');
    const when=el('span',null,' · '+new Date(c.time).toLocaleString());when.style.cssText='color:var(--t3);font-size:11px';r.append(when);
    r.addEventListener('click',()=>restoreChat(c.id??c.time));
-   r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();restoreChat(c.id??c.time);}});
    list.append(r);
  });
 }
 function restoreChat(id){
+ if(chatLog.length)saveCurrentChat();                  // keep what was added since (same chat too)
  const c=myChats().find(x=>(x.id??x.time)===id);if(!c)return;
- if(chatLog.length&&chatId!==(c.id??c.time))saveCurrentChat();
  chatGen++;busy=false;
  const t=document.getElementById('transcript');t.replaceChildren();
  chatLog=[];
  const log=Array.isArray(c.log)?c.log:(c.html?[{t:'html',html:c.html}]:[]);
- log.forEach(e=>{chatLog.push(e);pushEntry(e,false);});
+ log.forEach(e=>{try{if(pushEntry(e,false))chatLog.push(e);}catch(err){}});
  history=Array.isArray(c.history)?c.history:[];chatId=c.id??c.time;
  document.getElementById('hero').classList.add('hidden');t.classList.remove('hidden');
  baseNav=0;closeModal();typeset(t);scrollDown();
@@ -814,7 +849,7 @@ function saveCurrentChat(){
  if(suppressSave||!USER_EMAIL||!chatLog.length)return;
  const first=chatLog.find(e=>e.t==='user');
  const title=first?String(first.text).slice(0,48):'Chat';
- const chats=loadChats().filter(c=>(c.id??c.time)!==chatId);
+ const chats=loadChats().filter(c=>(c.id??c.time)!==chatId||(c.owner&&c.owner!==USER_EMAIL));
  const id=chatId??Date.now();
  chats.unshift({id,owner:USER_EMAIL,title,time:Date.now(),log:chatLog,history});
  chatId=id;
@@ -831,18 +866,26 @@ function showCurrent(){const t=document.getElementById('transcript');const h=doc
  baseNav=0;document.getElementById('overlay').classList.remove('show');setActiveNav(0);closeSidebar();scrollDown();}
 function openPractice(){setModeByName('exam');showCurrent();baseNav=3;setActiveNav(3);toast('Exam mode — type a topic to generate a practice set');document.getElementById('input').focus();}
 function keyActivate(node,fn){node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fn(e);}});}
-function toggleSidebar(){document.body.classList.toggle('nav-open');}
-function closeSidebar(){document.body.classList.remove('nav-open');}
+function syncMenuBtn(){const b=document.querySelector('.menubtn');if(b)b.setAttribute('aria-expanded',document.body.classList.contains('nav-open')?'true':'false');}
+function toggleSidebar(){document.body.classList.toggle('nav-open');syncMenuBtn();}
+function closeSidebar(){document.body.classList.remove('nav-open');syncMenuBtn();}
+function closeAcctMenu(){const m=document.getElementById('acctMenu'),c=document.getElementById('acctChip');if(m)m.classList.remove('show');if(c)c.setAttribute('aria-expanded','false');}
 function attachNav(){const nav=document.querySelectorAll('.nav a');
  const actions=[showCurrent,openRecent,openMaterial,openPractice,openTrust];
- nav.forEach((a,i)=>{a.onclick=e=>{e.preventDefault();actions[i]&&actions[i]();};keyActivate(a,()=>actions[i]&&actions[i]());});
- const ft=document.querySelector('.footer');if(ft){ft.onclick=openSettings;keyActivate(ft,openSettings);}
- const chip=document.getElementById('acctChip');if(chip)keyActivate(chip,toggleAcct);
+ nav.forEach((a,i)=>{a.onclick=e=>{e.preventDefault();actions[i]&&actions[i]();};});
+ const ft=document.querySelector('.footer');if(ft){ft.onclick=openSettings;}
  window.addEventListener('beforeunload',()=>saveCurrentChat());
  buildAcctMenu();
  document.addEventListener('click',e=>{const m=document.getElementById('acctMenu');const c=document.getElementById('acctChip');
   if(m&&c&&!c.contains(e.target)&&!m.contains(e.target)){m.classList.remove('show');c.setAttribute('aria-expanded','false');}});
- document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();closeSidebar();const m=document.getElementById('acctMenu');if(m)m.classList.remove('show');}});
+ document.addEventListener('keydown',e=>{
+   if(e.key==='Escape'){if(document.getElementById('overlay').classList.contains('show'))closeModal();closeSidebar();closeAcctMenu();return;}
+   // every non-native role=button control works from the keyboard
+   if((e.key==='Enter'||e.key===' ')&&!e.isComposing){
+     const t=e.target;
+     if(t&&t.getAttribute&&t.getAttribute('role')==='button'&&t.tagName!=='BUTTON'){e.preventDefault();t.click();}
+   }
+ });
 }
 function buildAcctMenu(){const chip=document.getElementById('acctChip');if(!chip)return;
  chip.style.position='relative';
@@ -879,12 +922,13 @@ function applyUser(name,email,token){
  buildAcctMenu();}
 function applyPrefs(){
  const m=localStorage.getItem('vs_mode'); chipsFor(['quick','teach','exam'].includes(m)?m:'quick');
- const wt=document.getElementById('webToggle'); if(wt)wt.classList.toggle('on',localStorage.getItem('vs_web')==='1');}
+ const wt=document.getElementById('webToggle'); if(wt)wt.classList.toggle('on',localStorage.getItem('vs_web')==='1');syncWebSwitch();}
 function clearSession(){['vs_user','vs_email','vs_token'].forEach(k=>localStorage.removeItem(k));USER_EMAIL='';USER_TOKEN='';}
 function signOut(skipServer){
  suppressSave=true;
  const tok=USER_TOKEN;
- if(tok&&!skipServer){try{fetch(API+'/api/logout',{method:'POST',headers:{'Authorization':'Bearer '+tok}}).catch(()=>{});}catch(e){}}
+ // keepalive lets the logout request outlive the page reload that follows
+ if(tok&&!skipServer){try{fetch(API+'/api/logout',{method:'POST',keepalive:true,headers:{'Authorization':'Bearer '+tok}}).catch(()=>{});}catch(e){}}
  clearSession();localStorage.removeItem('vs_chats');
  location.reload();
 }
@@ -895,8 +939,10 @@ function showLogin(message){
  const err=document.getElementById('authErr');
  if(message){err.textContent=message;err.style.display='block';}
 }
+let lastAccount='';   // who was signed in before the session ended (for account switches)
 function sessionExpired(message){
- saveCurrentChat();clearSession();busy=false;killLoader();
+ saveCurrentChat();lastAccount=USER_EMAIL;clearSession();busy=false;killLoader();
+ document.getElementById('overlay').classList.remove('show');closeSidebar();
  showLogin(message||'Your session has expired. Please sign in again.');
 }
 async function doAuth(){
@@ -910,7 +956,13 @@ async function doAuth(){
   const r=await api(authMode==='signup'?'/api/signup':'/api/login',{body,auth:false});
   if(!r.ok){err.textContent=r.error||'Something went wrong.';err.style.display='block';return;}
   suppressSave=false;
-  if(r.email&&localStorage.getItem('vs_email')&&localStorage.getItem('vs_email')!==r.email)localStorage.removeItem('vs_chats');
+  const who=(r.email||email).toLowerCase();
+  if(lastAccount&&lastAccount!==who){
+    // a different student on this browser: nothing of the previous account survives
+    chatGen++;history=[];chatLog=[];chatId=null;resetTranscript();
+    localStorage.setItem('vs_chats',JSON.stringify(loadChats().filter(c=>c.owner===who)));
+  }
+  lastAccount=who;
   applyUser(r.name,r.email||email,r.token);err.style.display='none';
   document.getElementById('anPass').value='';
   enter();applyPrefs();setActiveNav(0);

@@ -212,7 +212,9 @@ test('401 on a call → login with the server message; open chat saved first (ow
 test('REG-F5: after a 401, signing in as a DIFFERENT account does not show, save or send the previous account\'s chat', async () => {
   let expired = false;
   const env = boot({ storage: ASHA, routes: {
-    '/api/answer': () => expired ? resp(401, { ok: false, error: 'Your session has expired. Please sign in again.' }) : ans('ASHA-PRIVATE-ANSWER'),
+    // (the mock answers per token: Bala's own reply must not carry Asha's marker text)
+    '/api/answer': (b, call) => expired ? resp(401, { ok: false, error: 'Your session has expired. Please sign in again.' })
+      : ans(authOf(call) === 'Bearer tok-bala' ? 'bala answer' : 'ASHA-PRIVATE-ANSWER'),
     '/api/login': BALA_LOGIN } });
   env.window.setModeByName('teach');
   await env.ask('asha private question');
@@ -411,7 +413,8 @@ test('REG-F10: switching to Teach while a Quick answer is in flight does not put
   env.$('#input').value = 'quick question'; env.window.send(); await env.settle();
   env.click('.chip[data-mode=teach]');
   slow.resolve(ans('quick answer')); await env.settle();
-  assert.deepEqual(env.ev('JSON.parse(JSON.stringify(history))'), [],
+  // (compare as JSON: an array created inside the page is from another JS realm)
+  assert.equal(env.ev('JSON.stringify(history)'), '[]',
     'send() checks the CURRENT mode after the await, not the mode the question was asked in');
 });
 
