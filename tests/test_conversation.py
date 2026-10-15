@@ -379,6 +379,7 @@ def test_spelling_fix_never_invents_or_touches_real_words(fakes, index_text, mon
     monkeypatch.setattr(converse, "_english", lambda: {"together", "photosynthesis"})
     assert converse.fix_spelling("photosynthesis together", A) == "photosynthesis together"
     assert converse.fix_spelling("kruskal", A) == "kruskal"          # nothing close in the notes
+    assert converse.fix_spelling("the four layers", A) == "the four layers"   # not "for"
     assert converse.fix_spelling("OSImodel", A).lower() == "osi model"
     r = answer("explain photosynthesis", user=A)
     assert r["decision"] == "refuse"                                  # still honest

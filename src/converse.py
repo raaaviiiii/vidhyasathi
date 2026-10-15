@@ -437,9 +437,11 @@ def _fix_word(w: str, vocab: Counter, english: set) -> str:
         sw = lw[:i] + lw[i + 1] + lw[i] + lw[i + 2:]
         if sw in vocab:
             return _match_case(w, sw)
-    # one misspelled word
-    cutoff = 0.85 if len(lw) <= 5 else 0.8
-    pool = [v for v in vocab if len(v) >= 3 and abs(len(v) - len(lw)) <= 2]
+    # one misspelled word (never on short words: "four" is not a typo of "for")
+    if len(lw) < 5:
+        return w
+    cutoff = 0.85 if len(lw) <= 6 else 0.8
+    pool = [v for v in vocab if len(v) >= 4 and abs(len(v) - len(lw)) <= (1 if len(lw) <= 6 else 2)]
     close = difflib.get_close_matches(lw, pool, n=2, cutoff=cutoff)
     if not close:
         return w
