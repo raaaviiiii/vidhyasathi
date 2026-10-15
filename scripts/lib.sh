@@ -39,14 +39,16 @@ tidy_private() {
   mkdir -p "$QDRANT_DIR"
 }
 
-# Start the Qdrant container with its data in private/qdrant (recreated if it still
-# points at the old folder — the data itself is kept, it lives in the folder).
+# Start the Qdrant container (a new one keeps its data in private/qdrant).
 start_qdrant() {
   local src
   src="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/qdrant/storage"}}{{.Source}}{{end}}{{end}}' qdrant 2>/dev/null)"
-  if [ -n "$src" ] && [ "$src" != "$QDRANT_DIR" ]; then
-    docker rm -f qdrant >/dev/null 2>&1
-  fi
+  # Only a container bound to the OLD project folder is recreated: that folder was just
+  # moved to private/qdrant, so the data moves with it. A container that keeps its data
+  # anywhere else (a Docker volume) is left exactly as it is.
+  case "$src" in
+    */qdrant_storage_server) docker rm -f qdrant >/dev/null 2>&1 ;;
+  esac
   docker start qdrant >/dev/null 2>&1 || docker run -d --name qdrant -p 6333:6333 \
     -v "$QDRANT_DIR:/qdrant/storage" qdrant/qdrant >/dev/null || return 1
   wait_for 60 curl -s -m 2 http://localhost:6333/collections
