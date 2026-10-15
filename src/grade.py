@@ -78,10 +78,12 @@ def grade(question: str, student_answer: str, user: str | None = None) -> dict:
         return {"question": question, "grounded": False, "feedback": "", "top_score": 0.0,
                 "mode": "", "sources": [],
                 "error": "Type both the question and your answer to get feedback."}
-    hits, top_score, mode_label = _retrieve(question, user=user)
+    from src.converse import fix_spelling
+    q_fixed = fix_spelling(question, user)            # typos must not block feedback
+    hits, top_score, mode_label = _retrieve(q_fixed, user=user)
     hits = sorted(hits, key=lambda h: h["score"], reverse=True)[:TOP_K_GRADE]
     context = build_context(hits)
-    grounded = _gate(question, context, top_score)
+    grounded = _gate(q_fixed, context, top_score)
  
     sources = []
     for h in hits:

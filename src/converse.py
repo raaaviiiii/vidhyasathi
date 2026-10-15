@@ -13,8 +13,10 @@ the message actually MEANS:
                     topic, and answer "what's on slide 4 of X"
   locate()          finds the slide / page a message points at
 """
+import difflib
 import re
 import threading
+from collections import Counter
 
 from src.store import count, user_chunks, chunks_at
 
@@ -341,25 +343,123 @@ def _title(text: str) -> str:
     return ""
 
 
-def outline(user: str | None) -> dict[str, list[tuple[str, str]]]:
-    """{document label: [(locator, title), ...]} in document order. Cached until the
-    student's material changes."""
+def _material(user: str | None):
+    """(outline, vocabulary) of a student's notes, built in one pass and cached until
+    their material changes. vocabulary: {lower-case word: count}."""
     n = count(user)
     with _outline_lock:
         hit = _outline_cache.get(user)
         if hit and hit[0] == n:
-            return hit[1]
+            return hit[1], hit[2]
     out: dict[str, list[tuple[str, str]]] = {}
+    vocab: Counter = Counter()
     seen = set()
     for c in user_chunks(user):
+        vocab.update(w for w in _ASCII_WORD.findall(c["text"].lower()) if len(w) >= 2)
         key = (c["source"], c["loc"])
         if key in seen:
             continue
         seen.add(key)
+        vocab.update(w for w in _ASCII_WORD.findall(c["source"].lower()) if len(w) >= 2)
         out.setdefault(c["source"], []).append((c["loc"], _title(c["text"])))
     with _outline_lock:
-        _outline_cache[user] = (n, out)
-    return out
+        _outline_cache[user] = (n, out, vocab)
+    return out, vocab
+
+
+def outline(user: str | None) -> dict[str, list[tuple[str, str]]]:
+    """{document label: [(locator, title), ...]} in document order."""
+    return _material(user)[0]
+
+
+def vocabulary(user: str | None) -> Counter:
+    return _material(user)[1]
+
+
+# ---------------------------------------------------------------- spelling
+# A word the notes don't contain is checked against the notes' own vocabulary:
+#   joined words  "osimodel" -> "osi model", "datalink" -> "data link"
+#   one typo      "satallite" -> "satellite", "induvidual" -> "individual"
+# Real words (in the embedding model's dictionary) and short words are left alone, and
+# nothing is ever "corrected" into a word the notes don't contain.
+_ASCII_WORD = re.compile(r"[a-z]+")
+_english_words: set | None = None
+
+
+def _english() -> set:
+    """The embedding model's whole-word dictionary, once the model is loaded (it always
+    is in the running app); empty otherwise."""
+    global _english_words
+    if _english_words is not None:
+        return _english_words
+    try:
+        from src import embed
+        tok = getattr(getattr(embed, "_model", None), "tokenizer", None)
+        if tok is None:
+            return set()
+        _english_words = {w for w in tok.get_vocab() if w.isalpha() and w.islower() and len(w) > 2}
+    except Exception:
+        return set()
+    return _english_words
+
+
+def _match_case(src: str, new: str) -> str:
+    if src.isupper() and len(src) > 1:
+        return new.upper()
+    if src[:1].isupper():
+        return new[:1].upper() + new[1:]
+    return new
+
+
+def _fix_word(w: str, vocab: Counter, english: set) -> str:
+    lw = w.lower()
+    if (len(lw) < 4 or lw in vocab or lw in english or lw in STOP or lw in FOLLOWUP
+            or lw in SCOPE or lw in _REQUEST or lw in _REFERS_BACK):
+        return w
+    # a different form of a word the notes use ("layer" / "layers") is not a typo
+    forms = {lw + "s", lw + "es", lw + "ed", lw + "ing", lw + "d"}
+    if lw.endswith("s"):
+        forms |= {lw[:-1], lw[:-2]}
+    if forms & vocab.keys():
+        return w
+    # two words typed together
+    best = None
+    for i in range(2, len(lw) - 1):
+        a, b = lw[:i], lw[i:]
+        if a in vocab and b in vocab and max(len(a), len(b)) >= 3:
+            key = (min(len(a), len(b)), vocab[a] * vocab[b])
+            if best is None or key > best[0]:
+                best = (key, f"{a} {b}")
+    if best:
+        return _match_case(w, best[1])
+    # two letters swapped ("cabel" -> "cable")
+    for i in range(len(lw) - 1):
+        sw = lw[:i] + lw[i + 1] + lw[i] + lw[i + 2:]
+        if sw in vocab:
+            return _match_case(w, sw)
+    # one misspelled word
+    cutoff = 0.85 if len(lw) <= 5 else 0.8
+    pool = [v for v in vocab if len(v) >= 3 and abs(len(v) - len(lw)) <= 2]
+    close = difflib.get_close_matches(lw, pool, n=2, cutoff=cutoff)
+    if not close:
+        return w
+    if len(close) == 2:
+        r1 = difflib.SequenceMatcher(None, lw, close[0]).ratio()
+        r2 = difflib.SequenceMatcher(None, lw, close[1]).ratio()
+        if abs(r1 - r2) < 1e-9 and close[0].rstrip("s") != close[1].rstrip("s"):
+            return w                                   # a genuine tie: don't guess
+    return _match_case(w, close[0])
+
+
+def fix_spelling(text: str, user: str | None) -> str:
+    """The message with joined words split and typos corrected against the notes."""
+    if not text:
+        return text
+    vocab = vocabulary(user)
+    if not vocab:
+        return text
+    english = _english()
+    return re.sub(r"[A-Za-z]+", lambda m: _fix_word(m.group(0), vocab, english), text)
 
 
 def outline_text(user: str | None, max_chars: int = 2500, per_doc: int = 30) -> str:

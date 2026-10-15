@@ -351,3 +351,40 @@ def test_prompts_forbid_invented_reasons():
     from src.answer import SYSTEM_PROMPT, TEACH_PROMPT
     for p in (SYSTEM_PROMPT, TEACH_PROMPT):
         assert "don't give the reason" in p and "Analogies" in p
+
+
+# ------------------------------------------------------------ typing slips
+OSI = ["The OSI model is composed of seven layers: physical, data link, network, transport, "
+       "session, presentation and application.",
+       "Satellites act as microwave repeaters in the sky. No single individual owns them."]
+
+
+@pytest.mark.parametrize("typed,meant", [
+    ("explain the osimodel fully", "explain the osi model fully"),
+    ("what is the datalink layer", "what is the data link layer"),
+    ("what do satallites do", "what do satellites do"),
+    ("who owns satellites as an induvidual", "who owns satellites as an individual"),
+])
+def test_joined_words_and_typos_are_fixed_against_the_notes(fakes, index_text, typed, meant):
+    from src.answer import _retrieve
+    index_text(A, "Network Models", OSI)
+    r = answer(typed, user=A)
+    assert r["resolved_question"] == meant
+    # the notes match the fixed question better than the typed one
+    assert _retrieve(meant, user=A)[1] > _retrieve(typed, user=A)[1]
+
+
+def test_spelling_fix_never_invents_or_touches_real_words(fakes, index_text, monkeypatch):
+    index_text(A, "Network Models", OSI)
+    monkeypatch.setattr(converse, "_english", lambda: {"together", "photosynthesis"})
+    assert converse.fix_spelling("photosynthesis together", A) == "photosynthesis together"
+    assert converse.fix_spelling("kruskal", A) == "kruskal"          # nothing close in the notes
+    assert converse.fix_spelling("OSImodel", A).lower() == "osi model"
+    r = answer("explain photosynthesis", user=A)
+    assert r["decision"] == "refuse"                                  # still honest
+
+
+def test_practice_and_grading_also_survive_typos(fakes, index_text):
+    from src.exam import generate
+    index_text(A, "Network Models", OSI)
+    assert generate("the osimodel", n=2, user=A)["grounded"]

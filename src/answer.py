@@ -537,6 +537,9 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
         if query == converse.CHAT:
             return _chat(question, hist, user)
 
+    # typed together or misspelled ("osimodel", "satallite"): fix against the notes' words
+    query = converse.fix_spelling(query, user)
+
     # 2. find the notes: a named slide/page directly, otherwise search
     recall = []
     if converse.wanted_locs(query):

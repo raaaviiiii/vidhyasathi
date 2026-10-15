@@ -85,11 +85,13 @@ def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
                 "top_score": 0.0, "mode": "", "sources": [],
                 "error": "Ask for at least one question on a topic."}
     n = min(n, MAX_N)
-    hits, top_score, mode_label = _retrieve(topic, user=user)
+    from src.converse import fix_spelling
+    topic_q = fix_spelling(topic, user)               # "osimodel" -> "osi model"
+    hits, top_score, mode_label = _retrieve(topic_q, user=user)
     # the most on-topic chunks (small-KB hits arrive in document order, not by score)
     hits = sorted(hits, key=lambda h: h["score"], reverse=True)[:TOP_K_GEN]
     context = build_context(hits)
-    grounded = _gate(topic, context, top_score)
+    grounded = _gate(topic_q, context, top_score)
  
     sources = []
     for h in hits:
@@ -102,7 +104,7 @@ def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
                 "top_score": top_score, "mode": mode_label, "sources": sources}
  
     raw = ask_llm(GEN_PROMPT.format(n=n),
-                  f"Context passages:\n{context}\n\nTopic: {topic}")
+                  f"Context passages:\n{context}\n\nTopic: {topic_q}")
     # every practice answer must cite one of THIS student's sources; never more than asked
     labels = {h["source"].strip().lower() for h in hits}
     items = [it for it in _parse_qa(raw) if _cites_known_source(it["a"], labels)][:n]

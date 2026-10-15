@@ -233,6 +233,15 @@ def conversation_checks(ta):
            or "gcd" in (r.get("resolved_question") or "").lower(),
            str(r.get("resolved_question")), dt, level="WARN")
 
+    r, _, dt = _say(ta, [], "what is the euclideanalgorithm?")
+    record("joined words ('euclideanalgorithm') are understood",
+           "euclidean algorithm" in (r.get("resolved_question") or "").lower()
+           and r.get("decision") in ("answer", "answer_uncertain"),
+           f"decision={r.get('decision')} understood={r.get('resolved_question')}", dt)
+    r, _, dt = _say(ta, [], "state the devision algorithm")
+    record("a typo ('devision') is understood",
+           r.get("decision") in ("answer", "answer_uncertain"), f"decision={r.get('decision')}", dt)
+
     r, h, dt = _say(ta, [], "what files do I have?")
     record("'what files do I have?' lists the material", r.get("decision") == "chat"
            and "number" in (r.get("answer") or "").lower(), "", dt, level="WARN")
