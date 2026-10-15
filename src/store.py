@@ -8,8 +8,8 @@ import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (Distance, VectorParams, PointStruct,
-                                  Filter, FieldCondition, MatchValue)
-from src.config import QDRANT_PATH, COLLECTION_NAME, EMBED_DIM
+                                  Filter, FieldCondition, MatchValue, FilterSelector)
+from src.config import QDRANT_PATH, QDRANT_URL, COLLECTION_NAME, EMBED_DIM
 
 # fixed namespace so a point id is deterministic from (user, chunk_id):
 # re-uploading the same file for the same user overwrites instead of duplicating.
@@ -35,7 +35,7 @@ def _source_filter(user, source):
 def get_client():
     global _client
     if _client is None:
-        _client = QdrantClient(path=QDRANT_PATH)
+        _client = QdrantClient(url=QDRANT_URL) if QDRANT_URL else QdrantClient(path=QDRANT_PATH)
     return _client
 
 
@@ -97,7 +97,7 @@ def delete_source(user, source):
     if not client.collection_exists(COLLECTION_NAME):
         return
     client.delete(collection_name=COLLECTION_NAME,
-                  points_selector=_source_filter(user, source))
+                  points_selector=FilterSelector(filter=_source_filter(user, source)))
 
 
 def delete_user(user):
@@ -106,7 +106,7 @@ def delete_user(user):
         return
     client = get_client()
     if client.collection_exists(COLLECTION_NAME):
-        client.delete(collection_name=COLLECTION_NAME, points_selector=user_filter(user))
+        client.delete(collection_name=COLLECTION_NAME, points_selector=FilterSelector(filter=user_filter(user)))
 
 
 def user_sources(user):

@@ -18,8 +18,13 @@ EMBED_DIM = 384
 TOP_K = 5
 
 # --- vector store ---
-COLLECTION_NAME = "vidhyasathi_kb"
+import os
+COLLECTION_NAME = os.environ.get("VS_COLLECTION", "vidhyasathi_kb")  # override for tests
 QDRANT_PATH = str(BASE_DIR / "qdrant_storage")
+# Prefer a Qdrant SERVER (Docker): embedded path mode is single-process and loses
+# writes under a web server's threadpool. QDRANT_URL="" falls back to embedded mode.
+import os
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 
 # --- answering (LLM via Ollama) ---
 OLLAMA_BASE_URL = "http://localhost:11434"
