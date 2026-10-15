@@ -873,7 +873,9 @@ def list_doubts(u: Student = Depends(current_user)):
                 sql += " OR d.helper_id IS NULL"
             sql += ") AND d.status<>'closed' ORDER BY (d.status='open') DESC, d.created DESC"
             inbox = _rows(c, sql, (u.id, u.id))
+        expertise = c.execute("SELECT expertise FROM users WHERE id=?", (u.id,)).fetchone()
     return {"ok": True, "role": u.role, "is_helper": u.is_helper, "is_admin": u.is_admin,
+            "expertise": (expertise[0] if expertise else "") if u.role == "helper" else "",
             "mine": [_doubt_view(d, u) for d in mine],
             "inbox": [_doubt_view(d, u) for d in inbox]}
 

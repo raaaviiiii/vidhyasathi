@@ -61,7 +61,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 
 /* ---------------- APP ---------------- */
 #app{position:relative;z-index:1;display:flex;height:100%}
-.sidebar{width:272px;flex:0 0 272px;background:rgba(30,25,19,.55);border-right:1px solid var(--hair);
+.sidebar{overflow-y:auto;width:272px;flex:0 0 272px;background:rgba(30,25,19,.55);border-right:1px solid var(--hair);
   padding:24px 18px 22px;display:flex;flex-direction:column;gap:22px;position:relative}
 .brand{display:flex;align-items:center;gap:11px}
 .brand .wm{font-family:Eczar,serif;font-weight:600;font-size:19px;line-height:1}
@@ -597,7 +597,7 @@ function pushEntry(e,live){
   const t=document.getElementById('transcript');
   let node;
   if(e.t==='user'){node=msg('user',e.who||'YOU');node.append(el('div','bubble',e.text));}
-  else if(e.t==='answer')node=answerNode(e.r,e.q);
+  else if(e.t==='answer')node=answerNode(e.r,e.q,e);
   else if(e.t==='exam')node=examNode(e.r);
   else if(e.t==='grade')node=gradeNode(e.r);
   else if(e.t==='html'){node=el('div');sanitizeInto(node,String(e.html||''),true);}   // chats saved by older versions
@@ -618,7 +618,7 @@ function loader(){
 function killLoader(){const l=document.getElementById('loader');if(l)l.remove()}
 
 const DECISIONS={answer:['ok','grounded'],answer_uncertain:['warn','tentative'],answer_web:['warn','from the web'],refuse:['no','not in material']};
-function answerNode(r,q){
+function answerNode(r,q,entry){
   const kind=r.decision==='refuse'?'refuse':(r.decision==='answer_web'?'web':'');
   const d=msg('bot'+(kind?' '+kind:''),'VIDHYĀSATHI');
   d.append(renderMd(el('div','bubble'),r.answer));
@@ -649,7 +649,8 @@ function answerNode(r,q){
   if(src)d.append(el('div','srcline','sources: '+src));
   if(r.offer_help&&q){
     const b=el('button','askhelp','\ud83d\ude4b Ask a helper');b.type='button';
-    b.addEventListener('click',()=>openAskHelper(q,r,b));
+    if(entry&&entry.helpSent){b.disabled=true;b.textContent='\u2713 Sent to '+entry.helpSent;}
+    else b.addEventListener('click',()=>openAskHelper(q,r,b,entry));
     d.append(b);
   }
   return d;
@@ -841,7 +842,7 @@ async function doDeleteAccount(){const pw=document.getElementById('delPw').value
 }
 
 /* ---------- ask for help ---------- */
-let ROLE={role:'student',is_helper:false,is_admin:false};
+let ROLE={role:'student',is_helper:false,is_admin:false,expertise:''};
 let doubtsCache={mine:[],inbox:[]};
 function seenAnswers(){try{return new Set(JSON.parse(localStorage.getItem('vs_seen_answers:'+USER_EMAIL)||'[]'));}catch(e){return new Set();}}
 function markAnswersSeen(){try{localStorage.setItem('vs_seen_answers:'+USER_EMAIL,JSON.stringify(doubtsCache.mine.filter(d=>d.status==='answered').map(d=>d.id)));}catch(e){}updateBadges();}
@@ -858,29 +859,41 @@ async function refreshDoubts(){
   if(!USER_TOKEN)return null;
   try{const r=await api('/api/doubts',{method:'GET'});
     doubtsCache={mine:Array.isArray(r.mine)?r.mine:[],inbox:Array.isArray(r.inbox)?r.inbox:[]};
-    ROLE={role:r.role||'student',is_helper:!!r.is_helper,is_admin:!!r.is_admin};
+    ROLE={role:r.role||'student',is_helper:!!r.is_helper,is_admin:!!r.is_admin,expertise:typeof r.expertise==='string'?r.expertise:''};
     try{updateBadges();}catch(e){}
     return r;}
   catch(e){return null;}
 }
-function openAskHelper(q,r,btn){
+function openAskHelper(q,r,btn,entry){
+  if(btn&&btn.dataset.sending){toast('Still sending that doubt\u2026');return;}
   openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">\u2715</span><h2>Ask a helper</h2>
   <div class="sub">A teacher or senior who knows this subject will reply. Their answer is added to your material, so next time Vidhy\u0101sathi can answer it from your notes.</div>
   <label class="dsec" for="hq">YOUR QUESTION</label><textarea id="hq" class="sarea" maxlength="4000"></textarea>
   <label class="dsec" for="hn">ANYTHING ELSE THEY SHOULD KNOW (OPTIONAL)</label><textarea id="hn" class="sarea" maxlength="2000" placeholder="e.g. which part confuses you"></textarea>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn on" id="hsend">Send to a helper</button></div>
-  <div id="hmsg" class="small" style="color:var(--t3);margin-top:8px"></div>`,5);
+  <div id="hmsg" class="small" style="color:var(--t3);margin-top:8px"></div>`,baseNav);
   document.getElementById('hq').value=q;
-  document.getElementById('hsend').addEventListener('click',async()=>{
+  const send=document.getElementById('hsend');
+  send.addEventListener('click',async()=>{
+    if(send.disabled)return;
     const qq=document.getElementById('hq').value.trim(),note=document.getElementById('hn').value.trim(),m=document.getElementById('hmsg');
     if(!qq){m.textContent='Write your question first.';return;}
-    m.textContent='Sending\u2026';
+    send.disabled=true;if(btn)btn.dataset.sending='1';m.textContent='Sending\u2026';
     const sources=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&s.source).map(s=>s.loc?s.source+' \u00b7 '+s.loc:s.source))];
-    try{const res=await post('/api/doubts',{question:qq,attempt:String(r.answer||'').slice(0,8000),decision:String(r.decision||''),sources,note});
-      if(btn){btn.disabled=true;btn.textContent='\u2713 Sent to '+(res.routed_to||'a helper');}
-      closeModal();toast(res.routed_to?('Sent to '+res.routed_to+' \u2014 their reply will appear in My doubts.'):'Sent \u2014 the next available helper will reply in My doubts.');
+    const attempt=[...String(r.answer||'')].slice(0,7990).join('');     // whole characters only
+    const stillOpen=()=>send.isConnected&&document.getElementById('overlay').classList.contains('show');
+    try{const res=await post('/api/doubts',{question:qq,attempt,decision:String(r.decision||''),sources,note});
+      const who=res.routed_to||'a helper';
+      if(entry)entry.helpSent=who;
+      if(btn){btn.disabled=true;btn.textContent='\u2713 Sent to '+who;}
+      if(stillOpen()){modalOpener=document.getElementById('input');closeModal();}
+      toast(res.routed_to?('Sent to '+res.routed_to+' \u2014 their reply will appear in My doubts.'):'Sent \u2014 the next available helper will reply in My doubts.');
       refreshDoubts();}
-    catch(e){m.textContent=e.message;m.style.color='#d98a55';}
+    catch(e){
+      if(e.status===401)return;
+      if(stillOpen()){m.textContent=e.message;m.style.color='#d98a55';send.disabled=false;}
+      else toast("Your doubt wasn't sent: "+e.message);}
+    finally{if(btn)delete btn.dataset.sending;}
   });
 }
 function statusChip(d){const map={open:'waiting',answered:'answered',closed:'withdrawn'};return el('span','st '+d.status,map[d.status]||d.status);}
@@ -892,14 +905,20 @@ async function openDoubts(){
   if(!doubtsCache.mine.length){const n=el('div','small','No doubts yet. When an answer is tentative or not in your notes, use \u201cAsk a helper\u201d.');n.style.color='var(--t3)';box.replaceChildren(n);return;}
   box.replaceChildren(...doubtsCache.mine.map(d=>{
     const c=el('div','doubt');c.append(el('div','dq',d.question));
-    const meta=el('div','dm');meta.append(statusChip(d),el('span',null,d.helper_name?('\u2192 '+d.helper_name):'\u2192 waiting for a helper'),el('span',null,when(d.created)));c.append(meta);
+    const meta=el('div','dm');meta.append(statusChip(d),el('span',null,d.status==='closed'?'you withdrew this':(d.helper_name?('\u2192 '+d.helper_name):'\u2192 waiting for a helper')),el('span',null,when(d.created)));c.append(meta);
     if(d.status==='answered'){
       const a=el('div','da');renderMd(a,d.answer||'');c.append(a);
       const fb=el('div','dm');
       if(d.helpful==null){
         fb.append(el('span',null,'Was this helpful?'));
+        fb.tabIndex=-1;
         for(const [lbl,val] of [['Yes',true],['Not really',false]]){const b=el('button','btn',lbl);b.type='button';
-          b.addEventListener('click',async()=>{try{await post('/api/doubts/'+d.id+'/feedback',{helpful:val});fb.replaceChildren(el('span',null,'Thanks for the feedback.'));}catch(e){toast(e.message);}});fb.append(b);}
+          b.addEventListener('click',async()=>{
+            if(fb.dataset.busy)return;fb.dataset.busy='1';
+            fb.querySelectorAll('button').forEach(x=>x.disabled=true);
+            try{await post('/api/doubts/'+d.id+'/feedback',{helpful:val});d.helpful=val?1:0;
+              fb.replaceChildren(el('span',null,'Thanks for the feedback.'));fb.focus();}
+            catch(e){delete fb.dataset.busy;fb.querySelectorAll('button').forEach(x=>x.disabled=false);toast(e.message);}});fb.append(b);}
       }else fb.append(el('span',null,d.helpful?'You found this helpful.':'You marked this as not helpful.'));
       c.append(fb);
     }else if(d.status==='open'){
@@ -928,23 +947,29 @@ async function openInbox(){
     const msg=el('div','small');
     send.addEventListener('click',async()=>{const a=ta.value.trim();if(!a){msg.textContent='Write an answer first.';return;}
       send.disabled=true;msg.textContent='Sending\u2026';
-      try{await post('/api/doubts/'+d.id+'/answer',{answer:a});msg.textContent='Sent \u2713 \u2014 added to their material.';refreshDoubts();}
+      try{await post('/api/doubts/'+d.id+'/answer',{answer:a});msg.textContent='Sent \u2713 \u2014 added to their material.';
+        d.status='answered';d.answer=a;const chip=c.querySelector('.st');if(chip)chip.replaceWith(statusChip(d));send.textContent='Update answer';
+        const hit=doubtsCache.inbox.find(x=>x.id===d.id);if(hit){hit.status='answered';hit.answer=a;}try{updateBadges();}catch(e){}
+        refreshDoubts();}
       catch(e){msg.textContent=e.message;}finally{send.disabled=false;}});
     c.append(ta,send,msg);typeset(c);return c;
   }));
 }
 async function renderHelperSettings(){
   const box=document.getElementById('helperSettings');if(!box)return;
-  await refreshDoubts();
-  if(!document.getElementById('helperSettings'))return;
+  const fresh=await refreshDoubts();
+  if(!fresh||!USER_TOKEN||!document.getElementById('helperSettings'))return;   // no stale owner tools
   box.replaceChildren();
   if(ROLE.role==='helper'){
     const det=el('details');det.style.marginTop='10px';
     const sum=el('summary',null,'My helper subjects');sum.style.cssText='cursor:pointer;color:var(--gold2);font-size:13.5px';det.append(sum);
     const wrap=el('div');wrap.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:10px';
     const inp=el('input','sinput');inp.placeholder='e.g. number theory, graphs, networks';inp.setAttribute('aria-label','Subjects you can help with');inp.maxLength=500;
+    inp.value=ROLE.expertise||'';
     const b=el('button','btn','Save subjects');b.type='button';const m=el('div','small');
-    b.addEventListener('click',async()=>{try{await post('/api/me/expertise',{expertise:inp.value});m.textContent='Saved \u2713';}catch(e){m.textContent=e.message;}});
+    b.addEventListener('click',async()=>{
+      if(!inp.value.trim()&&!confirm("Clear your subjects? Doubts won't be matched to you by subject any more."))return;
+      try{await post('/api/me/expertise',{expertise:inp.value});ROLE.expertise=inp.value;m.textContent='Saved \u2713';}catch(e){m.textContent=e.message;}});
     wrap.append(el('div','small','Doubts are routed to you when they match these subjects.'),inp,b,m);det.append(wrap);box.append(det);
   }
   if(!ROLE.is_admin)return;
@@ -959,7 +984,7 @@ async function renderHelperSettings(){
     try{const h=await api('/api/admin/helpers',{method:'GET'});
       list.replaceChildren(...(h.helpers.length?h.helpers.map(x=>{const row=el('div','doc');row.append(el('span','nm',x.name+' \u00b7 '+x.email+(x.expertise?' \u2014 '+x.expertise:'')),el('span','sz',x.open+' open \u00b7 '+x.answered+' answered'));
         const rm=el('button','docdel','\u2715');rm.type='button';rm.title='Remove helper';rm.setAttribute('aria-label','Remove helper '+x.email);
-        rm.addEventListener('click',async()=>{try{await post('/api/admin/helpers',{email:x.email,helper:false});load();}catch(e){m.textContent=e.message;}});row.append(rm);return row;}):[el('div','small','No helpers yet.')]));
+        rm.addEventListener('click',async()=>{if(!confirm('Remove '+x.name+' as a helper? Their open doubts go back to the unassigned pool.'))return;try{await post('/api/admin/helpers',{email:x.email,helper:false});load();}catch(e){m.textContent=e.message;}});row.append(rm);return row;}):[el('div','small','No helpers yet.')]));
       const st=await api('/api/admin/stats',{method:'GET'});
       const w=st.weeks.filter(x=>x.questions||x.doubts);
       stats.textContent=`${st.doubts} doubts \u00b7 ${st.answered} answered \u00b7 ${st.open} open`+
@@ -1082,7 +1107,8 @@ function applyUser(name,email,token){
 function applyPrefs(){
  const m=localStorage.getItem('vs_mode'); chipsFor(['quick','teach','exam'].includes(m)?m:'quick');
  const wt=document.getElementById('webToggle'); if(wt)wt.classList.toggle('on',localStorage.getItem('vs_web')==='1');syncWebSwitch();}
-function clearSession(){['vs_user','vs_email','vs_token'].forEach(k=>localStorage.removeItem(k));USER_EMAIL='';USER_TOKEN='';}
+function clearSession(){['vs_user','vs_email','vs_token'].forEach(k=>localStorage.removeItem(k));USER_EMAIL='';USER_TOKEN='';
+ ROLE={role:'student',is_helper:false,is_admin:false,expertise:''};doubtsCache={mine:[],inbox:[]};try{updateBadges();}catch(e){}}
 function signOut(skipServer){
  suppressSave=true;
  const tok=USER_TOKEN;
@@ -1100,7 +1126,8 @@ function showLogin(message){
 }
 let lastAccount='';   // who was signed in before the session ended (for account switches)
 function sessionExpired(message){
- saveCurrentChat();lastAccount=USER_EMAIL;clearSession();busy=false;killLoader();
+ if(USER_EMAIL){saveCurrentChat();lastAccount=USER_EMAIL;}   // a 2nd 401 must not erase who it was
+ clearSession();busy=false;killLoader();
  document.getElementById('overlay').classList.remove('show');closeSidebar();
  showLogin(message||'Your session has expired. Please sign in again.');
 }

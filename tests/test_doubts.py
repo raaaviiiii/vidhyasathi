@@ -166,6 +166,8 @@ def test_helper_can_update_own_subjects_students_cannot(world):
     assert c.post("/api/me/expertise", headers=H(t["stu"]), json={"expertise": "x"}).status_code == 403
     me = c.get("/api/me", headers=H(t["maths"])).json()
     assert me["role"] == "helper" and me["is_helper"] is True and me["is_admin"] is False
+    assert doubts(c, t["maths"])["expertise"] == "graphs trees"      # prefills Settings
+    assert doubts(c, t["stu"])["expertise"] == ""
 
 
 def test_demoting_a_helper_returns_their_open_doubts_to_the_pool(world):
