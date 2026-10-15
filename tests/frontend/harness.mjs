@@ -46,6 +46,7 @@ export const DEFAULT_ROUTES = {
   '/api/logout': { ok: true },
   '/api/account/password': { ok: true },
   '/api/account/delete': { ok: true },
+  '/api/doubts': { ok: true, mine: [], inbox: [], role: 'student', is_helper: false, is_admin: false },
 };
 
 const open = new Set();

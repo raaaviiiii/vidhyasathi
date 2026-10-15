@@ -22,7 +22,7 @@ test('quick mode: send posts question, shows user echo + answer, hides hero', as
 test('empty / whitespace input does not send', async () => {
   const env = boot({ storage: USER });
   await env.ask('   ');
-  assert.equal(env.calls.length, 0);
+  assert.equal(env.calls.filter(c => c.path !== '/api/doubts').length, 0);
 });
 
 test('Enter sends, Shift+Enter does not', async () => {

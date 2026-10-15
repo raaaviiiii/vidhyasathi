@@ -210,5 +210,5 @@ test('grade flow: cancelling either prompt sends nothing', async () => {
   env.window.openGrade(); await env.settle();
   const env2 = boot({ storage: USER, prompts: ['Q', ''] });
   env2.window.openGrade(); await env2.settle();
-  assert.equal(env.calls.length + env2.calls.length, 0);
+  assert.equal(env.calls.filter(c => c.path !== '/api/doubts').length + env2.calls.filter(c => c.path !== '/api/doubts').length, 0);
 });

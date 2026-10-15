@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.answer import answer
 from src.build_index import ingest_file
+from src.doubts import route as route_doubt, index_helper_answers
 from src.errors import ServiceDown, StoreUnavailable
 from src.exam import generate, MAX_N as EXAM_MAX_N
 from src.grade import grade
@@ -188,6 +189,19 @@ def _db():
     c = sqlite3.connect(USERS_DB, timeout=10)
     c.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT, "
               "email TEXT UNIQUE, pw TEXT, salt TEXT, created REAL)")
+    ucols = [r[1] for r in c.execute("PRAGMA table_info(users)")]
+    if "role" not in ucols:            # phase 2: student | helper
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+    if "expertise" not in ucols:       # subjects a helper can help with
+        c.execute("ALTER TABLE users ADD COLUMN expertise TEXT NOT NULL DEFAULT ''")
+    c.execute("CREATE TABLE IF NOT EXISTS doubts(id INTEGER PRIMARY KEY, student_id INTEGER NOT NULL, "
+              "student_email TEXT NOT NULL, question TEXT NOT NULL, attempt TEXT, decision TEXT, "
+              "sources TEXT, note TEXT, status TEXT NOT NULL DEFAULT 'open', helper_id INTEGER, "
+              "created REAL, answer TEXT, answered_by INTEGER, answered_at REAL, helpful INTEGER)")
+    # one row per question asked: WHEN and the DECISION only (never the question text),
+    # so escalation and refusal rates can be tracked over time
+    c.execute("CREATE TABLE IF NOT EXISTS usage(id INTEGER PRIMARY KEY, user_id INTEGER, "
+              "ts REAL, decision TEXT)")
     cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)")]
     if cols and "user_id" not in cols:          # sessions are disposable: rebuild
         c.execute("DROP TABLE sessions")
@@ -225,6 +239,15 @@ class Student(BaseModel):
     email: str
     name: str
     token_hash: str
+    role: str = "student"
+
+    @property
+    def is_admin(self) -> bool:
+        return self.email in ADMIN_EMAILS
+
+    @property
+    def is_helper(self) -> bool:
+        return self.role == "helper" or self.is_admin
 
 
 def _session_for(authorization: str) -> Student | None:
@@ -233,10 +256,11 @@ def _session_for(authorization: str) -> Student | None:
         return None
     th = _token_hash(token)
     with closing(_db()) as c:
-        row = c.execute("SELECT u.id, u.email, u.name FROM sessions s JOIN users u "
+        row = c.execute("SELECT u.id, u.email, u.name, u.role FROM sessions s JOIN users u "
                         "ON u.id = s.user_id WHERE s.token_hash=? AND s.expires>?",
                         (th, time.time())).fetchone()
-    return Student(id=row[0], email=row[1], name=row[2], token_hash=th) if row else None
+    return Student(id=row[0], email=row[1], name=row[2], token_hash=th,
+                   role=row[3] or "student") if row else None
 
 
 def current_user(authorization: str = Header(default="")) -> Student:
@@ -464,7 +488,8 @@ def login(r: LoginReq, request: Request):
 @app.get("/api/me")
 @guarded
 def me(u: Student = Depends(current_user)):
-    return {"ok": True, "name": u.name, "email": u.email}
+    return {"ok": True, "name": u.name, "email": u.email, "role": u.role,
+            "is_helper": u.is_helper, "is_admin": u.is_admin}
 
 
 @app.post("/api/logout")
@@ -509,6 +534,9 @@ def delete_account(r: DeleteAccountReq, u: Student = Depends(current_user)):
     shutil.rmtree(_user_dir(u.email), ignore_errors=True)
     with closing(_db()) as c:
         c.execute("DELETE FROM sessions WHERE user_id=?", (u.id,))
+        c.execute("DELETE FROM doubts WHERE student_id=?", (u.id,))
+        c.execute("UPDATE doubts SET helper_id=NULL WHERE helper_id=? AND status='open'", (u.id,))
+        c.execute("DELETE FROM usage WHERE user_id=?", (u.id,))
         c.execute("DELETE FROM users WHERE id=?", (u.id,))
         c.commit()
     return {"ok": True}
@@ -531,6 +559,13 @@ def list_users(u: Student = Depends(current_user)):
 def api_answer(r: AnswerReq, u: Student = Depends(current_user)):
     res = answer(r.question, mode=r.mode, history=[h.model_dump() for h in r.history],
                  web=r.web, user=u.email)
+    try:
+        with closing(_db()) as c:
+            c.execute("INSERT INTO usage(user_id,ts,decision) VALUES(?,?,?)",
+                      (u.id, time.time(), res.get("decision")))
+            c.commit()
+    except sqlite3.Error:
+        pass                                    # stats are best-effort, answers are not
     return JSONResponse(clean(res))
 
 
@@ -670,3 +705,242 @@ def api_material_delete(r: DeleteMaterialReq, u: Student = Depends(current_user)
     delete_doc(u.email, p.name)
     delete_legacy_source(u.email, source_label(p))
     return {"ok": True, "name": p.name}
+
+
+# ====================================================================== ask for help
+MAX_OPEN_DOUBTS = 20
+
+
+class DoubtReq(BaseModel):
+    question: str = Field(max_length=4000)
+    attempt: str = Field("", max_length=8000)       # what the assistant said
+    decision: str = Field("", max_length=40)
+    sources: list[str] = Field(default_factory=list, max_length=20)
+    note: str = Field("", max_length=2000)          # anything the student adds
+    _q = field_validator("question")(_strip_nonempty)
+
+    @field_validator("sources")
+    @classmethod
+    def _src(cls, v):
+        return [str(x)[:200] for x in v if str(x).strip()]
+
+
+class DoubtAnswerReq(BaseModel):
+    answer: str = Field(max_length=8000)
+    _a = field_validator("answer")(_strip_nonempty)
+
+
+class FeedbackReq(BaseModel):
+    helpful: bool
+
+
+class HelperReq(BaseModel):
+    email: str = Field(max_length=254)
+    helper: bool = True
+    expertise: str = Field("", max_length=500)
+
+
+class ExpertiseReq(BaseModel):
+    expertise: str = Field(max_length=500)
+
+
+def _first(name: str) -> str:
+    return (name or "").strip().split(" ")[0] or "A student"
+
+
+def _doubt_view(row: dict, viewer: Student) -> dict:
+    """What one person may see of a doubt. Students see their own doubts in full;
+    helpers see the student's first name only, never their email."""
+    out = {k: row[k] for k in ("id", "question", "attempt", "decision", "note", "status",
+                               "created", "answer", "answered_at", "helpful")}
+    out["sources"] = json.loads(row["sources"] or "[]")
+    out["helper_name"] = row.get("helper_name")
+    out["mine"] = row["student_id"] == viewer.id
+    if not out["mine"]:
+        out["student_name"] = _first(row.get("student_name"))
+    return out
+
+
+_DOUBT_SELECT = ("SELECT d.*, h.name AS helper_name, s.name AS student_name FROM doubts d "
+                 "LEFT JOIN users h ON h.id = d.helper_id LEFT JOIN users s ON s.id = d.student_id ")
+
+
+def _rows(c, sql, args=()):
+    c.row_factory = sqlite3.Row
+    return [dict(r) for r in c.execute(sql, args).fetchall()]
+
+
+@app.post("/api/doubts")
+@guarded
+def ask_helper(r: DoubtReq, u: Student = Depends(current_user)):
+    """Send a doubt to the best-matched helper."""
+    with closing(_db()) as c:
+        open_n = c.execute("SELECT COUNT(*) FROM doubts WHERE student_id=? AND status='open'",
+                           (u.id,)).fetchone()[0]
+        if open_n >= MAX_OPEN_DOUBTS:
+            return _err(429, "You already have 20 open doubts. Wait for replies or withdraw some.")
+        helpers = _rows(c, "SELECT u.id, u.name, u.email, u.expertise, "
+                           "(SELECT COUNT(*) FROM doubts d WHERE d.helper_id=u.id AND d.status='open') "
+                           "AS open_count FROM users u WHERE u.role='helper' AND u.id<>?", (u.id,))
+    helper = route_doubt(r.question, r.sources, helpers)
+    with closing(_db()) as c:
+        cur = c.execute("INSERT INTO doubts(student_id,student_email,question,attempt,decision,"
+                        "sources,note,status,helper_id,created) VALUES(?,?,?,?,?,?,?,'open',?,?)",
+                        (u.id, u.email, r.question, r.attempt, r.decision,
+                         json.dumps(r.sources), r.note.strip(), helper["id"] if helper else None,
+                         time.time()))
+        c.commit()
+        row = _rows(c, _DOUBT_SELECT + "WHERE d.id=?", (cur.lastrowid,))[0]
+    return {"ok": True, "doubt": _doubt_view(row, u),
+            "routed_to": helper["name"] if helper else None}
+
+
+@app.get("/api/doubts")
+@guarded
+def list_doubts(u: Student = Depends(current_user)):
+    """The student's own doubts, plus (for helpers) the ones assigned to them and
+    (for the admin) any that nobody could be matched to."""
+    with closing(_db()) as c:
+        mine = _rows(c, _DOUBT_SELECT + "WHERE d.student_id=? ORDER BY d.created DESC", (u.id,))
+        inbox = []
+        if u.is_helper:
+            sql = _DOUBT_SELECT + "WHERE d.student_id<>? AND (d.helper_id=?"
+            if u.is_admin:
+                sql += " OR d.helper_id IS NULL"
+            sql += ") AND d.status<>'closed' ORDER BY (d.status='open') DESC, d.created DESC"
+            inbox = _rows(c, sql, (u.id, u.id))
+    return {"ok": True, "role": u.role, "is_helper": u.is_helper, "is_admin": u.is_admin,
+            "mine": [_doubt_view(d, u) for d in mine],
+            "inbox": [_doubt_view(d, u) for d in inbox]}
+
+
+def _load_doubt(c, doubt_id: int) -> dict | None:
+    rows = _rows(c, _DOUBT_SELECT + "WHERE d.id=?", (doubt_id,))
+    return rows[0] if rows else None
+
+
+@app.post("/api/doubts/{doubt_id}/answer")
+@guarded
+def answer_doubt(doubt_id: int, r: DoubtAnswerReq, u: Student = Depends(current_user)):
+    """A helper answers (or edits their answer). The answer is fed back into the
+    student's own knowledge base."""
+    with closing(_db()) as c:
+        d = _load_doubt(c, doubt_id)
+        if not d or d["status"] == "closed":
+            return _err(404, "That doubt doesn't exist or was withdrawn.")
+        allowed = (d["helper_id"] == u.id and u.role == "helper") or u.is_admin
+        if not allowed or d["student_id"] == u.id:
+            return _err(403, "This doubt isn't assigned to you.")
+        c.execute("UPDATE doubts SET answer=?, status='answered', answered_by=?, answered_at=?, "
+                  "helper_id=COALESCE(helper_id, ?) WHERE id=?",
+                  (r.answer.strip(), u.id, time.time(), u.id, doubt_id))
+        c.commit()
+        answered = _rows(c, "SELECT d.id, d.question, d.answer, h.name AS helper_name FROM doubts d "
+                            "LEFT JOIN users h ON h.id = d.answered_by "
+                            "WHERE d.student_id=? AND d.status='answered'", (d["student_id"],))
+    index_helper_answers(d["student_email"], answered)
+    return {"ok": True}
+
+
+@app.post("/api/doubts/{doubt_id}/feedback")
+@guarded
+def doubt_feedback(doubt_id: int, r: FeedbackReq, u: Student = Depends(current_user)):
+    with closing(_db()) as c:
+        d = _load_doubt(c, doubt_id)
+        if not d or d["student_id"] != u.id:
+            return _err(404, "Not found.")
+        if d["status"] != "answered":
+            return _err(400, "You can rate an answer once a helper has replied.")
+        c.execute("UPDATE doubts SET helpful=? WHERE id=?", (1 if r.helpful else 0, doubt_id))
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/doubts/{doubt_id}/close")
+@guarded
+def withdraw_doubt(doubt_id: int, u: Student = Depends(current_user)):
+    """The student withdraws an open doubt (answered ones stay as part of their notes)."""
+    with closing(_db()) as c:
+        d = _load_doubt(c, doubt_id)
+        if not d or d["student_id"] != u.id:
+            return _err(404, "Not found.")
+        if d["status"] != "open":
+            return _err(400, "Only an open doubt can be withdrawn.")
+        c.execute("UPDATE doubts SET status='closed' WHERE id=?", (doubt_id,))
+        c.commit()
+    return {"ok": True}
+
+
+@app.post("/api/me/expertise")
+@guarded
+def set_expertise(r: ExpertiseReq, u: Student = Depends(current_user)):
+    """Helpers keep their own subject list up to date (it drives routing)."""
+    if not u.is_helper:
+        return _err(403, "Only helpers list subjects.")
+    with closing(_db()) as c:
+        c.execute("UPDATE users SET expertise=? WHERE id=?", (r.expertise.strip(), u.id))
+        c.commit()
+    return {"ok": True}
+
+
+def _require_admin(u: Student):
+    if not u.is_admin:
+        raise HTTPException(403, "Only the app owner can do that.")
+
+
+@app.get("/api/admin/helpers")
+@guarded
+def admin_helpers(u: Student = Depends(current_user)):
+    _require_admin(u)
+    with closing(_db()) as c:
+        rows = _rows(c, "SELECT u.name, u.email, u.expertise, "
+                        "(SELECT COUNT(*) FROM doubts d WHERE d.helper_id=u.id AND d.status='open') AS open, "
+                        "(SELECT COUNT(*) FROM doubts d WHERE d.answered_by=u.id) AS answered "
+                        "FROM users u WHERE u.role='helper' ORDER BY u.name")
+    return {"ok": True, "helpers": rows}
+
+
+@app.post("/api/admin/helpers")
+@guarded
+def admin_set_helper(r: HelperReq, u: Student = Depends(current_user)):
+    """Make an existing account a helper (with subjects), or back into a student."""
+    _require_admin(u)
+    email = r.email.strip().lower()
+    with closing(_db()) as c:
+        row = c.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+        if not row:
+            return _err(404, "No account with that email. Ask them to sign up first.")
+        c.execute("UPDATE users SET role=?, expertise=? WHERE id=?",
+                  ("helper" if r.helper else "student", r.expertise.strip() if r.helper else "", row[0]))
+        if not r.helper:            # their open doubts go back to the unassigned pool
+            c.execute("UPDATE doubts SET helper_id=NULL WHERE helper_id=? AND status='open'", (row[0],))
+        c.commit()
+    return {"ok": True}
+
+
+@app.get("/api/admin/stats")
+@guarded
+def admin_stats(u: Student = Depends(current_user)):
+    """Escalation trend for the deck's claim: as helper answers feed the knowledge
+    base, the share of questions that end in a doubt should fall week on week."""
+    _require_admin(u)
+    week = 7 * 86400
+    now = time.time()
+    with closing(_db()) as c:
+        weeks = []
+        for i in range(7, -1, -1):
+            a, b = now - (i + 1) * week, now - i * week
+            asked = c.execute("SELECT COUNT(*) FROM usage WHERE ts>=? AND ts<?", (a, b)).fetchone()[0]
+            refused = c.execute("SELECT COUNT(*) FROM usage WHERE ts>=? AND ts<? AND decision='refuse'",
+                                (a, b)).fetchone()[0]
+            doubts = c.execute("SELECT COUNT(*) FROM doubts WHERE created>=? AND created<?", (a, b)).fetchone()[0]
+            weeks.append({"week_start": a, "questions": asked, "refusals": refused, "doubts": doubts,
+                          "escalation_rate": round(doubts / asked, 3) if asked else None})
+        total = c.execute("SELECT COUNT(*), SUM(status='answered'), SUM(status='open'), "
+                          "AVG(CASE WHEN answered_at IS NOT NULL THEN answered_at-created END), "
+                          "SUM(helpful=1), SUM(helpful IS NOT NULL) FROM doubts").fetchone()
+    n, answered, open_, avg_secs, helpful, rated = total
+    return {"ok": True, "weeks": weeks, "doubts": n or 0, "answered": answered or 0,
+            "open": open_ or 0,
+            "avg_hours_to_answer": round(avg_secs / 3600, 1) if avg_secs else None,
+            "helpful_rate": round(helpful / rated, 2) if rated else None}

@@ -216,6 +216,23 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .sinput{padding:9px 12px;border-radius:10px;border:1px solid var(--hair2);background:var(--surface,#1c1712);color:var(--t1);font-size:13.5px;font-family:inherit;outline:none}
 .sinput:focus{border-color:rgba(232,162,74,.55)}
 .recent{display:flex;flex-direction:column;gap:6px}
+.badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:var(--saffron);color:#2a1a06;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.askhelp{margin:2px 4px 0;align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;border:1px solid rgba(232,162,74,.45);background:rgba(232,162,74,.08);color:var(--saffron2);font-size:12.5px;cursor:pointer;font-family:inherit}
+.askhelp:hover{background:rgba(232,162,74,.16)}
+.askhelp[disabled]{opacity:.6;cursor:default}
+.doubt{border:1px solid var(--hair);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.doubt .dq{font-weight:600;color:var(--t1);font-size:14px;line-height:1.45}
+.doubt .dm{font-size:12px;color:var(--t3);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.doubt .da{font-size:13.5px;line-height:1.6;color:var(--t1);background:rgba(94,203,131,.06);border:1px solid rgba(94,203,131,.2);border-radius:10px;padding:10px 12px}
+.doubt .datt{font-size:12.5px;color:var(--t2);border-left:2px solid var(--hair2);padding-left:10px}
+.doubt textarea,.sarea{width:100%;min-height:84px;padding:9px 12px;border-radius:10px;border:1px solid var(--hair2);background:var(--surface,#1c1712);color:var(--t1);font-size:13.5px;font-family:inherit;resize:vertical;outline:none}
+.doubt textarea:focus,.sarea:focus{border-color:rgba(232,162,74,.55)}
+.st{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--hair)}
+.st.open{color:var(--saffron2);border-color:rgba(232,162,74,.35)}
+.st.answered{color:#9fe3b7;border-color:rgba(94,203,131,.3)}
+.st.closed{color:var(--t3)}
+.dlist{display:flex;flex-direction:column;gap:10px}
+.dsec{font-size:11px;letter-spacing:1px;color:rgba(217,180,90,.85);margin:14px 0 8px;font-weight:500}
 .recent .r{padding:11px 13px;border:1px solid var(--hair);border-radius:11px;font-size:13.5px;color:var(--t2);cursor:pointer}
 .recent .r:hover{color:var(--t1);border-color:var(--hair2)}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;background:var(--raised);border:1px solid var(--hair2);color:var(--t1);padding:12px 18px;border-radius:12px;font-size:13.5px;box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:.3s}
@@ -313,6 +330,8 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
       <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="3.4" y="2.4" width="9.2" height="11.2" rx="1.6" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5.6 6h4.8M5.6 8.3h4.8M5.6 10.6h3.4" stroke="#d9b45a" stroke-width="1.1"/></svg>My material</a>
       <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2.4" y="2.4" width="11.2" height="11.2" rx="3" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M5 8l2 2 4-4.4" fill="none" stroke="#d9b45a" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Practice sets</a>
       <a href="#" role="button"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="6.6" r="4" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M6 10l-.6 3.6L8 12l2.6 1.6L10 10" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linejoin="round"/></svg>Trust &amp; citations</a>
+      <a href="#" role="button" id="navDoubts"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.2C3 3.5 3.5 3 4.2 3h7.6c.7 0 1.2.5 1.2 1.2v5.4c0 .7-.5 1.2-1.2 1.2H7.4L4.6 13v-2.2h-.4C3.5 10.8 3 10.3 3 9.6Z" fill="none" stroke="#d9b45a" stroke-width="1.15" stroke-linejoin="round"/><path d="M6.6 5.9a1.5 1.5 0 1 1 2 1.4c-.4.2-.6.5-.6.9M8 9.2v.1" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linecap="round"/></svg>My doubts<span class="badge hidden" id="doubtsBadge"></span></a>
+      <a href="#" role="button" id="navInbox" class="hidden"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 9.2 4.4 3.6c.1-.4.5-.6.9-.6h5.4c.4 0 .8.2.9.6l1.8 5.6v3c0 .5-.4.8-.8.8H3.4c-.4 0-.8-.3-.8-.8Z" fill="none" stroke="#d9b45a" stroke-width="1.15" stroke-linejoin="round"/><path d="M2.6 9.2h3.2l.8 1.4h2.8l.8-1.4h3.2" fill="none" stroke="#d9b45a" stroke-width="1.1" stroke-linejoin="round"/></svg>Helper inbox<span class="badge hidden" id="inboxBadge"></span></a>
     </nav>
     <div class="wmk" id="sbWmk"></div>
     <div class="footer" role="button" tabindex="0" aria-label="Settings"><div class="l"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="2.7" fill="none" stroke="#d9b45a" stroke-width="1.2"/><path d="M9 2.6V4.4M9 13.6V15.4M2.6 9H4.4M13.6 9H15.4M4.5 4.5l1.3 1.3M12.2 12.2l1.3 1.3M13.5 4.5l-1.3 1.3M5.8 12.2l-1.3 1.3" stroke="#d9b45a" stroke-width="1.1" stroke-linecap="round"/></svg>Settings</div><svg width="13" height="13" viewBox="0 0 14 14"><path d="M5 3l4 4-4 4" fill="none" stroke="#8a7f6b" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -578,7 +597,7 @@ function pushEntry(e,live){
   const t=document.getElementById('transcript');
   let node;
   if(e.t==='user'){node=msg('user',e.who||'YOU');node.append(el('div','bubble',e.text));}
-  else if(e.t==='answer')node=answerNode(e.r);
+  else if(e.t==='answer')node=answerNode(e.r,e.q);
   else if(e.t==='exam')node=examNode(e.r);
   else if(e.t==='grade')node=gradeNode(e.r);
   else if(e.t==='html'){node=el('div');sanitizeInto(node,String(e.html||''),true);}   // chats saved by older versions
@@ -599,7 +618,7 @@ function loader(){
 function killLoader(){const l=document.getElementById('loader');if(l)l.remove()}
 
 const DECISIONS={answer:['ok','grounded'],answer_uncertain:['warn','tentative'],answer_web:['warn','from the web'],refuse:['no','not in material']};
-function answerNode(r){
+function answerNode(r,q){
   const kind=r.decision==='refuse'?'refuse':(r.decision==='answer_web'?'web':'');
   const d=msg('bot'+(kind?' '+kind:''),'VIDHYĀSATHI');
   d.append(renderMd(el('div','bubble'),r.answer));
@@ -626,8 +645,13 @@ function answerNode(r){
       : ' Not fully sure — you can ask a human helper.'));
     d.append(n);
   }
-  const src=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&typeof s==='object').map(s=>s.loc?`${s.source} · ${s.loc}`:String(s.source||'')).filter(Boolean))].slice(0,5).join(';  ');
+  const src=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&typeof s==='object').map(s=>s.loc?`${s.source} \u00b7 ${s.loc}`:String(s.source||'')).filter(Boolean))].slice(0,5).join(';  ');
   if(src)d.append(el('div','srcline','sources: '+src));
+  if(r.offer_help&&q){
+    const b=el('button','askhelp','\ud83d\ude4b Ask a helper');b.type='button';
+    b.addEventListener('click',()=>openAskHelper(q,r,b));
+    d.append(b);
+  }
   return d;
 }
 function examNode(r){
@@ -651,7 +675,7 @@ function gradeNode(r){
   d.append(b);return d;
 }
 function errorNode(m){const d=msg('bot refuse','VIDHYĀSATHI');d.append(el('div','bubble',m));return d;}
-function renderAnswer(r){killLoader();pushEntry({t:'answer',r},true);}
+function renderAnswer(r,q){killLoader();pushEntry({t:'answer',r,q},true);}
 function renderExam(r){killLoader();pushEntry({t:'exam',r},true);}
 function renderError(m){killLoader();pushEntry({t:'error',msg:String(m)},true);}
 
@@ -670,7 +694,7 @@ async function send(){
       const web=document.getElementById('webToggle').classList.contains('on');
       const r=await post('/api/answer',{question:q,mode:reqMode,web,history:reqMode==='teach'?history:[]});
       if(gen!==chatGen)return;
-      renderAnswer(r);
+      renderAnswer(r,q);
       if(reqMode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:String(r.answer||'')});}
     }
   }catch(e){ if(gen===chatGen&&e.status!==401)renderError(e.message); }
@@ -794,8 +818,10 @@ function openSettings(){
    <input id="delPw" type="password" placeholder="Confirm password" aria-label="Confirm password" autocomplete="current-password" class="sinput"/>
    <button class="btn warn" onclick="doDeleteAccount()">Delete my account</button>
    <div id="delMsg" class="small" style="color:var(--t3)"></div></div></details>
+ <div id="helperSettings"></div>
  <div class="trow" style="margin-top:8px"><span class="k">Account</span><span class="v"><button class="btn warn" onclick="signOut()">Sign out</button></span></div>`,-1);
  document.querySelector('.footer').classList.add('on');
+ renderHelperSettings().catch(()=>{});
 }
 function setDefaultMode(m){localStorage.setItem('vs_mode',m);setModeByName(m);openSettings();
  const b=[...document.querySelectorAll('#modal .btn')].find(x=>x.textContent===({quick:'Quick',teach:'Teach',exam:'Exam'})[m]);if(b)b.focus();}
@@ -812,6 +838,139 @@ async function doDeleteAccount(){const pw=document.getElementById('delPw').value
  if(!confirm('Delete your account and all your material? This cannot be undone.'))return;m.textContent='Deleting…';
  try{await post('/api/account/delete',{password:pw});signOut(true);}
  catch(e){m.textContent=e.message;m.style.color='#d98a55';}
+}
+
+/* ---------- ask for help ---------- */
+let ROLE={role:'student',is_helper:false,is_admin:false};
+let doubtsCache={mine:[],inbox:[]};
+function seenAnswers(){try{return new Set(JSON.parse(localStorage.getItem('vs_seen_answers:'+USER_EMAIL)||'[]'));}catch(e){return new Set();}}
+function markAnswersSeen(){try{localStorage.setItem('vs_seen_answers:'+USER_EMAIL,JSON.stringify(doubtsCache.mine.filter(d=>d.status==='answered').map(d=>d.id)));}catch(e){}updateBadges();}
+function updateBadges(){
+  const seen=seenAnswers();
+  const fresh=doubtsCache.mine.filter(d=>d.status==='answered'&&!seen.has(d.id)).length;
+  const todo=doubtsCache.inbox.filter(d=>d.status==='open').length;
+  const b1=document.getElementById('doubtsBadge'),b2=document.getElementById('inboxBadge');
+  if(b1){b1.textContent=fresh;b1.classList.toggle('hidden',!fresh);b1.setAttribute('aria-label',fresh+' new answers');}
+  if(b2){b2.textContent=todo;b2.classList.toggle('hidden',!todo);b2.setAttribute('aria-label',todo+' doubts waiting');}
+  const nav=document.getElementById('navInbox');if(nav)nav.classList.toggle('hidden',!ROLE.is_helper);
+}
+async function refreshDoubts(){
+  if(!USER_TOKEN)return null;
+  try{const r=await api('/api/doubts',{method:'GET'});
+    doubtsCache={mine:Array.isArray(r.mine)?r.mine:[],inbox:Array.isArray(r.inbox)?r.inbox:[]};
+    ROLE={role:r.role||'student',is_helper:!!r.is_helper,is_admin:!!r.is_admin};
+    try{updateBadges();}catch(e){}
+    return r;}
+  catch(e){return null;}
+}
+function openAskHelper(q,r,btn){
+  openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">\u2715</span><h2>Ask a helper</h2>
+  <div class="sub">A teacher or senior who knows this subject will reply. Their answer is added to your material, so next time Vidhy\u0101sathi can answer it from your notes.</div>
+  <label class="dsec" for="hq">YOUR QUESTION</label><textarea id="hq" class="sarea" maxlength="4000"></textarea>
+  <label class="dsec" for="hn">ANYTHING ELSE THEY SHOULD KNOW (OPTIONAL)</label><textarea id="hn" class="sarea" maxlength="2000" placeholder="e.g. which part confuses you"></textarea>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn on" id="hsend">Send to a helper</button></div>
+  <div id="hmsg" class="small" style="color:var(--t3);margin-top:8px"></div>`,5);
+  document.getElementById('hq').value=q;
+  document.getElementById('hsend').addEventListener('click',async()=>{
+    const qq=document.getElementById('hq').value.trim(),note=document.getElementById('hn').value.trim(),m=document.getElementById('hmsg');
+    if(!qq){m.textContent='Write your question first.';return;}
+    m.textContent='Sending\u2026';
+    const sources=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&s.source).map(s=>s.loc?s.source+' \u00b7 '+s.loc:s.source))];
+    try{const res=await post('/api/doubts',{question:qq,attempt:String(r.answer||'').slice(0,8000),decision:String(r.decision||''),sources,note});
+      if(btn){btn.disabled=true;btn.textContent='\u2713 Sent to '+(res.routed_to||'a helper');}
+      closeModal();toast(res.routed_to?('Sent to '+res.routed_to+' \u2014 their reply will appear in My doubts.'):'Sent \u2014 the next available helper will reply in My doubts.');
+      refreshDoubts();}
+    catch(e){m.textContent=e.message;m.style.color='#d98a55';}
+  });
+}
+function statusChip(d){const map={open:'waiting',answered:'answered',closed:'withdrawn'};return el('span','st '+d.status,map[d.status]||d.status);}
+function when(ts){try{return ts?new Date(ts*1000).toLocaleString():'';}catch(e){return '';}}
+async function openDoubts(){
+  openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">\u2715</span><h2>My doubts</h2><div class="sub">Questions you sent to a teacher or senior. Answers are added to your material automatically.</div><div class="dlist" id="dlist"><div class="small" style="color:var(--t3)">loading\u2026</div></div>`,5);
+  const r=await refreshDoubts();const box=document.getElementById('dlist');if(!box)return;
+  if(!r){box.replaceChildren(el('div','small',"Couldn't load your doubts. Try again in a moment."));return;}
+  if(!doubtsCache.mine.length){const n=el('div','small','No doubts yet. When an answer is tentative or not in your notes, use \u201cAsk a helper\u201d.');n.style.color='var(--t3)';box.replaceChildren(n);return;}
+  box.replaceChildren(...doubtsCache.mine.map(d=>{
+    const c=el('div','doubt');c.append(el('div','dq',d.question));
+    const meta=el('div','dm');meta.append(statusChip(d),el('span',null,d.helper_name?('\u2192 '+d.helper_name):'\u2192 waiting for a helper'),el('span',null,when(d.created)));c.append(meta);
+    if(d.status==='answered'){
+      const a=el('div','da');renderMd(a,d.answer||'');c.append(a);
+      const fb=el('div','dm');
+      if(d.helpful==null){
+        fb.append(el('span',null,'Was this helpful?'));
+        for(const [lbl,val] of [['Yes',true],['Not really',false]]){const b=el('button','btn',lbl);b.type='button';
+          b.addEventListener('click',async()=>{try{await post('/api/doubts/'+d.id+'/feedback',{helpful:val});fb.replaceChildren(el('span',null,'Thanks for the feedback.'));}catch(e){toast(e.message);}});fb.append(b);}
+      }else fb.append(el('span',null,d.helpful?'You found this helpful.':'You marked this as not helpful.'));
+      c.append(fb);
+    }else if(d.status==='open'){
+      const w=el('button','btn warn','Withdraw');w.type='button';
+      w.addEventListener('click',async()=>{if(!confirm('Withdraw this doubt?'))return;try{await post('/api/doubts/'+d.id+'/close',{});openDoubts();}catch(e){toast(e.message);}});
+      c.append(w);
+    }
+    typeset(c);return c;
+  }));
+  markAnswersSeen();
+}
+async function openInbox(){
+  openModal(`<span class="x" onclick="closeModal()" role="button" tabindex="0" aria-label="Close">\u2715</span><h2>Helper inbox</h2><div class="sub">Doubts students sent to you. Your answer is added to that student's material, so they won't need to ask again.</div><div class="dlist" id="ilist"><div class="small" style="color:var(--t3)">loading\u2026</div></div>`,6);
+  const r=await refreshDoubts();const box=document.getElementById('ilist');if(!box)return;
+  if(!r){box.replaceChildren(el('div','small',"Couldn't load the inbox. Try again in a moment."));return;}
+  if(!doubtsCache.inbox.length){const n=el('div','small','Nothing waiting. \u2728');n.style.color='var(--t3)';box.replaceChildren(n);return;}
+  box.replaceChildren(...doubtsCache.inbox.map(d=>{
+    const c=el('div','doubt');c.append(el('div','dq',d.question));
+    const meta=el('div','dm');meta.append(statusChip(d),el('span',null,'from '+(d.student_name||'a student')),el('span',null,when(d.created)));c.append(meta);
+    if(d.note)c.append(el('div','datt','Note: '+d.note));
+    if(d.attempt){const det=el('details');det.append(el('summary',null,'What Vidhy\u0101sathi said'));const at=el('div','datt');renderMd(at,d.attempt);det.append(at);
+      if(d.sources&&d.sources.length)det.append(el('div','dm','sources: '+d.sources.join('; ')));c.append(det);}
+    const ta=el('textarea');ta.maxLength=8000;ta.placeholder='Write your answer (markdown and $math$ work)';ta.setAttribute('aria-label','Answer for '+d.question.slice(0,60));
+    if(d.answer)ta.value=d.answer;
+    const send=el('button','btn on',d.status==='answered'?'Update answer':'Send answer');send.type='button';
+    const msg=el('div','small');
+    send.addEventListener('click',async()=>{const a=ta.value.trim();if(!a){msg.textContent='Write an answer first.';return;}
+      send.disabled=true;msg.textContent='Sending\u2026';
+      try{await post('/api/doubts/'+d.id+'/answer',{answer:a});msg.textContent='Sent \u2713 \u2014 added to their material.';refreshDoubts();}
+      catch(e){msg.textContent=e.message;}finally{send.disabled=false;}});
+    c.append(ta,send,msg);typeset(c);return c;
+  }));
+}
+async function renderHelperSettings(){
+  const box=document.getElementById('helperSettings');if(!box)return;
+  await refreshDoubts();
+  if(!document.getElementById('helperSettings'))return;
+  box.replaceChildren();
+  if(ROLE.role==='helper'){
+    const det=el('details');det.style.marginTop='10px';
+    const sum=el('summary',null,'My helper subjects');sum.style.cssText='cursor:pointer;color:var(--gold2);font-size:13.5px';det.append(sum);
+    const wrap=el('div');wrap.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:10px';
+    const inp=el('input','sinput');inp.placeholder='e.g. number theory, graphs, networks';inp.setAttribute('aria-label','Subjects you can help with');inp.maxLength=500;
+    const b=el('button','btn','Save subjects');b.type='button';const m=el('div','small');
+    b.addEventListener('click',async()=>{try{await post('/api/me/expertise',{expertise:inp.value});m.textContent='Saved \u2713';}catch(e){m.textContent=e.message;}});
+    wrap.append(el('div','small','Doubts are routed to you when they match these subjects.'),inp,b,m);det.append(wrap);box.append(det);
+  }
+  if(!ROLE.is_admin)return;
+  const det=el('details');det.style.marginTop='8px';
+  const sum=el('summary',null,'Helpers & escalations (owner)');sum.style.cssText='cursor:pointer;color:var(--gold2);font-size:13.5px';det.append(sum);
+  const wrap=el('div');wrap.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:10px';det.append(wrap);box.append(det);
+  const list=el('div','dlist');const stats=el('div','small');
+  const em=el('input','sinput');em.placeholder='Their account email';em.type='email';em.setAttribute('aria-label','Helper email');
+  const sub=el('input','sinput');sub.placeholder='Subjects they can help with';sub.setAttribute('aria-label','Helper subjects');sub.maxLength=500;
+  const add=el('button','btn on','Make helper');add.type='button';const m=el('div','small');
+  async function load(){
+    try{const h=await api('/api/admin/helpers',{method:'GET'});
+      list.replaceChildren(...(h.helpers.length?h.helpers.map(x=>{const row=el('div','doc');row.append(el('span','nm',x.name+' \u00b7 '+x.email+(x.expertise?' \u2014 '+x.expertise:'')),el('span','sz',x.open+' open \u00b7 '+x.answered+' answered'));
+        const rm=el('button','docdel','\u2715');rm.type='button';rm.title='Remove helper';rm.setAttribute('aria-label','Remove helper '+x.email);
+        rm.addEventListener('click',async()=>{try{await post('/api/admin/helpers',{email:x.email,helper:false});load();}catch(e){m.textContent=e.message;}});row.append(rm);return row;}):[el('div','small','No helpers yet.')]));
+      const st=await api('/api/admin/stats',{method:'GET'});
+      const w=st.weeks.filter(x=>x.questions||x.doubts);
+      stats.textContent=`${st.doubts} doubts \u00b7 ${st.answered} answered \u00b7 ${st.open} open`+
+        (st.avg_hours_to_answer!=null?` \u00b7 avg ${st.avg_hours_to_answer} h to answer`:'')+
+        (st.helpful_rate!=null?` \u00b7 ${Math.round(st.helpful_rate*100)}% helpful`:'')+
+        (w.length?' \u2014 escalation rate by week: '+w.map(x=>x.escalation_rate==null?'\u2013':Math.round(x.escalation_rate*100)+'%').join(' \u2192 '):'');
+    }catch(e){m.textContent=e.message;}
+  }
+  add.addEventListener('click',async()=>{if(!em.value.trim()){m.textContent='Enter their email.';return;}
+    try{await post('/api/admin/helpers',{email:em.value.trim(),helper:true,expertise:sub.value});m.textContent='Saved \u2713';em.value='';sub.value='';load();}catch(e){m.textContent=e.message;}});
+  wrap.append(stats,list,em,sub,add,m);load();
 }
 
 /* ---------- recent chats (per account, stored as data) ---------- */
@@ -871,8 +1030,8 @@ function toggleSidebar(){document.body.classList.toggle('nav-open');syncMenuBtn(
 function closeSidebar(){document.body.classList.remove('nav-open');syncMenuBtn();}
 function closeAcctMenu(){const m=document.getElementById('acctMenu'),c=document.getElementById('acctChip');if(m)m.classList.remove('show');if(c)c.setAttribute('aria-expanded','false');}
 function attachNav(){const nav=document.querySelectorAll('.nav a');
- const actions=[showCurrent,openRecent,openMaterial,openPractice,openTrust];
- nav.forEach((a,i)=>{a.onclick=e=>{e.preventDefault();actions[i]&&actions[i]();};});
+ const actions=[showCurrent,openRecent,openMaterial,openPractice,openTrust,openDoubts,openInbox];
+ nav.forEach((a,i)=>{a.onclick=e=>{e.preventDefault();if(actions[i])Promise.resolve(actions[i]()).catch(()=>{});};});
  const ft=document.querySelector('.footer');if(ft){ft.onclick=openSettings;}
  window.addEventListener('beforeunload',()=>saveCurrentChat());
  buildAcctMenu();
@@ -965,14 +1124,14 @@ async function doAuth(){
   lastAccount=who;
   applyUser(r.name,r.email||email,r.token);err.style.display='none';
   document.getElementById('anPass').value='';
-  enter();applyPrefs();setActiveNav(0);
+  enter();applyPrefs();setActiveNav(0);refreshDoubts().catch(()=>{});
  }catch(e){err.textContent=e.message;err.style.display='block';}
 }
 
 attachNav();
 (function boot(){
  const u=localStorage.getItem('vs_user'),e=localStorage.getItem('vs_email'),t=localStorage.getItem('vs_token');
- if(u&&e&&t){applyUser(u,e,t);enter();applyPrefs();setActiveNav(0);return;}
+ if(u&&e&&t){applyUser(u,e,t);enter();applyPrefs();setActiveNav(0);refreshDoubts().catch(()=>{});return;}
  if(u||e){                                   // saved by an older version: no session token
    clearSession();localStorage.removeItem('vs_chats');
    showLogin('Vidhyāsathi now uses secure sign-in. Please sign in again.');

@@ -44,6 +44,36 @@ def _drop_version(user, doc, ver):
         pass
 
 
+def replace_document(chunks, user, doc, source=None) -> str:
+    """Embed `chunks` and make them the ONLY live version of `doc` in the user's bucket:
+    write the new version first, retire the old one only after that succeeds, and roll
+    back the new one if retiring fails (never two live versions, never none).
+    Returns the new version id."""
+    vectors = embed_texts([c["text"] for c in chunks])
+    ver = uuid.uuid4().hex
+    try:
+        upsert_chunks(chunks, vectors, user=user, doc=doc, ver=ver)
+    except Exception:
+        _drop_version(user, doc, ver)        # no half-written version left behind
+        raise
+    try:
+        _drop_other_versions(user, doc, ver, source=source)
+    except Exception:
+        _drop_version(user, doc, ver)
+        raise
+    return ver
+
+
+def index_records(records, user, doc, source) -> int:
+    """Index in-app text (e.g. helper answers) as one document. Empty -> remove it."""
+    chunks = chunk_records(records, source=source)
+    if not chunks:
+        _delete(user_filter(user, FieldCondition(key="doc", match=MatchValue(value=doc))))
+        return 0
+    replace_document(chunks, user=user, doc=doc)
+    return len(chunks)
+
+
 def ingest_file(path, user: str | None = None, doc: str | None = None) -> dict:
     """Index one saved file for `user`, replacing any previous copy of the same file.
 
@@ -69,18 +99,7 @@ def ingest_file(path, user: str | None = None, doc: str | None = None) -> dict:
             msg += " " + " ".join(warnings)
         return {**base, "ok": False, "error": msg, "warnings": warnings}
 
-    vectors = embed_texts([c["text"] for c in chunks])
-    ver = uuid.uuid4().hex
-    try:
-        upsert_chunks(chunks, vectors, user=user, doc=doc, ver=ver)
-    except Exception:
-        _drop_version(user, doc, ver)        # no half-written version left behind
-        raise
-    try:
-        _drop_other_versions(user, doc, ver, source=src)   # only now retire the old copy
-    except Exception:
-        _drop_version(user, doc, ver)        # never leave two live versions
-        raise
+    ver = replace_document(chunks, user=user, doc=doc, source=src)
     n_ocr = sum(1 for c in chunks if c.get("ocr"))
     return {**base, "ok": True, "chunks": len(chunks), "ocr": n_ocr, "warnings": warnings,
             "ver": ver}

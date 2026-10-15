@@ -11,7 +11,8 @@ const NAV = { current: 0, recent: 1, material: 2, practice: 3, trust: 4 };
 
 test('sidebar has the spec nav items in order + New chat + Settings', () => {
   const env = boot({ storage: USER });
-  assert.deepEqual(env.navLinks().map(a => a.textContent.trim()), ['Current chat', 'Recent chats', 'My material', 'Practice sets', 'Trust & citations']);
+  assert.deepEqual(env.navLinks().map(a => a.textContent.trim()), ['Current chat', 'Recent chats', 'My material', 'Practice sets', 'Trust & citations', 'My doubts', 'Helper inbox']);
+  assert.ok(env.$('#navInbox').classList.contains('hidden'), 'Helper inbox is only for helpers');
   assert.match(env.$('.newchat').textContent, /New chat/);
   assert.match(env.$('.footer').textContent, /Settings/);
 });
@@ -289,7 +290,7 @@ test('starter chips: Explain fills input; Practice set → exam mode; Teach → 
   env.click(s[3]);
   assert.equal(env.window.eval('mode'), 'teach');
   env.click(s[2]); await env.settle();
-  assert.equal(env.calls.length, 0);
+  assert.equal(env.calls.filter(c => c.path !== '/api/doubts').length, 0, 'cancelled grade prompt still called the API');
 });
 
 test('mode chips set the mode and exactly one chip is on', () => {

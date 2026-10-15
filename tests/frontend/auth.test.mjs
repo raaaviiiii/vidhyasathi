@@ -25,7 +25,7 @@ test('signup: empty fields show an error and make no request', async () => {
   await env.window.doAuth();
   assert.equal(env.$('#authErr').style.display, 'block');
   assert.match(env.$('#authErr').textContent, /fill everything/i);
-  assert.equal(env.calls.length, 0);
+  assert.equal(env.calls.filter(c => c.path !== '/api/doubts').length, 0);
 });
 
 test('signup: server error (409 duplicate email) is shown on the card', async () => {

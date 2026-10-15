@@ -177,7 +177,7 @@ test('boot: token → home; nothing stored → plain login (no message, no reque
   const b = boot(); await b.settle();
   assert.ok(b.visible('#login'));
   assert.equal(b.$('#authErr').style.display, 'none');
-  assert.equal(a.calls.length + b.calls.length, 0);
+  assert.equal(a.calls.filter(c => c.path !== '/api/doubts').length + b.calls.filter(c => c.path !== '/api/doubts').length, 0);
 });
 
 test('boot: legacy storage (vs_user/vs_email, no vs_token) → forced sign-in with a message; old chats and identity cleared', async () => {
@@ -187,7 +187,7 @@ test('boot: legacy storage (vs_user/vs_email, no vs_token) → forced sign-in wi
   assert.match(env.$('#authErr').textContent, /sign in again/i);
   assert.equal(env.$('#authBtnText').textContent, 'Sign in');
   assert.equal(env.ls('vs_user'), null); assert.equal(env.ls('vs_email'), null); assert.equal(env.ls('vs_chats'), null);
-  assert.equal(env.calls.length, 0);
+  assert.equal(env.calls.filter(c => c.path !== '/api/doubts').length, 0);
   assert.deepEqual(env.errors, []);
 });
 
