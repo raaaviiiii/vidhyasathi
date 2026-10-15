@@ -13,8 +13,8 @@
 #  Then it stops the app again. Your accounts and notes are never modified:
 #  every test uses throwaway accounts and its own temporary collections.
 #
-#  Options (when run from a terminal):  --no-eval   skip step 7 (saves ~15 min)
-#                                       --serve     leave the app + public link running
+#  Option (when run from a terminal):  --no-eval   skip step 7 (saves a few minutes)
+#  This only CHECKS the app (on port 8765). To run it for real: vstart
 # ─────────────────────────────────────────────────────────────────────────────
 cd "$(dirname "$0")" || exit 1
 ROOT="$(pwd)"
@@ -24,11 +24,8 @@ LOG="logs/autopilot-$STAMP.log"
 SUMMARY="logs/latest-summary.txt"
 exec > >(tee -a "$LOG") 2>&1
 
-RUN_EVAL=1; SERVE=0
-for a in "$@"; do
-  [ "$a" = "--no-eval" ] && RUN_EVAL=0
-  [ "$a" = "--serve" ] && SERVE=1
-done
+RUN_EVAL=1
+for a in "$@"; do [ "$a" = "--no-eval" ] && RUN_EVAL=0; done
 
 : > "$SUMMARY"
 say()  { echo; echo "━━━ $* ━━━"; }
@@ -94,22 +91,25 @@ else
   echo "(Node isn't installed — UI tests will be skipped)"
 fi
 export VS_NODE_MODULES="$ROOT/node_modules"
-python -m pytest -q -p no:cacheprovider --timeout=180 2>&1 | tail -25
+TESTLOG="logs/tests-$STAMP.log"
+python -m pytest -q -p no:cacheprovider --timeout=180 -rfE 2>&1 | tee "$TESTLOG" | tail -25
 TEST_RC=${PIPESTATUS[0]}
 TEST_LINE="$(grep -E '[0-9]+ (passed|failed)' "$LOG" | tail -1)"
-if [ "$TEST_RC" = "0" ]; then note "Tests: PASS — $TEST_LINE"; else note "Tests: FAIL — $TEST_LINE"; fi
+if [ "$TEST_RC" = "0" ]; then note "Tests: PASS — $TEST_LINE"; else note "Tests: FAIL — $TEST_LINE (details: $ROOT/$TESTLOG)"; fi
 
 # ── 6. App + live end-to-end check ───────────────────────────────────────────
 say "6/7  Live check against the real model"
-lsof -ti tcp:8000 2>/dev/null | xargs kill 2>/dev/null
+# a separate port, so a copy you started with vstart keeps running
+PORT=8765
+lsof -ti tcp:$PORT 2>/dev/null | xargs kill 2>/dev/null
 sleep 1
-VS_ADMIN_EMAILS="${VS_ADMIN_EMAILS:-}" caffeinate -s python -m uvicorn app:app --host 127.0.0.1 --port 8000 \
+caffeinate -s python -m uvicorn app:app --host 127.0.0.1 --port $PORT \
   > "logs/app-$STAMP.log" 2>&1 &
 APP_PID=$!
 trap 'kill $APP_PID 2>/dev/null' EXIT
-wait_for 120 curl -s -m 2 http://localhost:8000/api/health || fail "the app didn't start (see logs/app-$STAMP.log)"
+wait_for 120 curl -s -m 2 http://localhost:$PORT/api/health || fail "the app didn't start (see logs/app-$STAMP.log)"
 echo "Warming up the model (first answer loads it into memory)…"
-python scripts/smoke_live.py http://localhost:8000
+python -u scripts/smoke_live.py http://localhost:$PORT
 SMOKE_RC=$?
 SMOKE_LINE="$(grep -E '[0-9]+ passed, [0-9]+ warnings, [0-9]+ failed' "$LOG" | tail -1)"
 if [ "$SMOKE_RC" = "0" ]; then note "Live check: PASS — $SMOKE_LINE"; else note "Live check: FAIL — $SMOKE_LINE"; fi
@@ -117,7 +117,7 @@ if [ "$SMOKE_RC" = "0" ]; then note "Live check: PASS — $SMOKE_LINE"; else not
 # ── 7. Evaluation on your real notes ─────────────────────────────────────────
 say "7/7  Evaluation on your uploaded notes"
 if [ "$RUN_EVAL" = "1" ]; then
-  python scripts/eval_real.py --n 20 --negatives 10
+  python -u scripts/eval_real.py --n 20 --negatives 10
   EVAL_RC=$?
   REPORT="$(ls -t eval/report-*.md 2>/dev/null | head -1)"
   if [ "$EVAL_RC" = "0" ] && [ -n "$REPORT" ]; then
@@ -134,11 +134,5 @@ fi
 echo
 note "Finished $(date). Full log: $ROOT/$LOG"
 echo; cat "$SUMMARY"
-if [ "$SERVE" = "1" ]; then
-  trap - EXIT
-  echo; echo "Leaving the app running. Public link:"
-  cloudflared tunnel --protocol http2 --url http://localhost:8000
-else
-  kill $APP_PID 2>/dev/null
-  echo; echo "Done — you can close this window."
-fi
+kill $APP_PID 2>/dev/null
+echo; echo "Done — you can close this window. To run the app: vstart"

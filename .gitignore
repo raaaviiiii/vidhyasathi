@@ -19,3 +19,5 @@ eval/
 node_modules/
 .backup-before-update-*/
 .vs-update.bundle
+.logs/
+logs/

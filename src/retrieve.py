@@ -35,6 +35,7 @@ def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES,
         "loc": h.payload.get("loc", ""),
         "order": h.payload.get("order", 0),
         "chunk_id": h.payload["chunk_id"],
+        "doc": h.payload.get("doc"),
         "text": h.payload["text"],
         "ocr": h.payload.get("ocr", False),
     } for h in hits]

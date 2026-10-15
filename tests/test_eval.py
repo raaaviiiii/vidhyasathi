@@ -122,3 +122,18 @@ def test_eval_real_script_uses_a_temporary_bucket_and_cleans_up(fakes, tmp_path,
     assert er.main() == 0
     assert list((tmp_path / "eval").glob("report-*.md"))
     assert count(er.BUCKET) == 0, "temporary evaluation bucket was left behind"
+
+
+def test_retrieval_metrics_count_hits_when_file_name_differs_from_label(fakes, tmp_path):
+    """Real uploads have doc='Module 1.pptx' but source='Module 1'. The retrieval scorer
+    must match passages by the same id on both sides (regression: MRR 0.00 on real notes
+    while citations were 100% correct)."""
+    from src.build_index import ingest_file
+    p = tmp_path / "Module 1.txt"
+    p.write_text("\n\n".join(NUMBER_THEORY * 3))
+    assert ingest_file(p, user=A)["ok"]
+    fakes.llm.respond = _qa_writer
+    items = ev.make_set(A, n=3, negatives=0)
+    m = ev.run_set(items, A, judge=False, progress=lambda *_: None)["metrics"]
+    assert m["mrr_pipeline"] and m["mrr_pipeline"] > 0.5, m
+    assert m["mrr_vector_only"] and m["mrr_vector_only"] > 0.5, m
