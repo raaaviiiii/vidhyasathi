@@ -30,116 +30,97 @@ from src.config import (LLM_MODEL, ANSWER_SCORE, HELP_SCORE, SMALL_KB_MAX,
 from src.errors import LLMUnavailable
 from src.retrieve import retrieve
 from src.rerank import rerank
-from src.store import count, user_sources
+from qdrant_client.models import FieldCondition, MatchValue
+from src.store import count, user_sources, user_chunks
 from src.websearch import web_context
+from src import converse
+
+# how much of a named document an overview may read (characters, ~4 per token)
+WHOLE_DOC_CHARS = 16000
  
 REFUSAL = "I don't have that in the material."
  
-# --- Quick Answer: terse, grounded, cited ------------------------------------
+# --- Quick Answer: a natural, grounded reply ----------------------------------
+_GROUNDING = (
+    "Grounding (strict):\n"
+    "- Use ONLY facts from the notes passages in the student's message. Each passage "
+    "starts with its source tag in square brackets, like [Notes \u00b7 p3] or "
+    "[Module 1 \u00b7 slide 4]. Put the exact tag after the facts you use.\n"
+    "- If the notes only partly cover the question, answer the part they cover and say "
+    "plainly, in one short sentence, what your notes don't cover. Don't fill gaps from "
+    "general knowledge.\n"
+    "- If the notes don't cover it at all, reply with exactly: "
+    "\"I don't have that in the material.\""
+)
 SYSTEM_PROMPT = (
-    "You are a study assistant. Answer the student's question using ONLY the "
-    "context passages provided. Each passage begins with its source tag in "
-    "square brackets, like [Syllabus \u00b7 p3] or [Notes \u00b7 Methods]. After "
-    "each fact you use, cite that exact tag. If the context does not contain "
-    "the answer, say exactly: \"I don't have that in the material.\" Do not use "
-    "outside knowledge."
+    "You are Vidhy\u0101sathi, a friendly study assistant who has read the student's "
+    "notes closely. Chat with the student the way a sharp, helpful classmate would: "
+    "natural, warm and direct.\n"
+    "How to reply:\n"
+    "- Answer straight away. Never start with 'According to the passages', 'Based on the "
+    "context' or similar, and never mention 'passages' or 'context' at all; if you need "
+    "to, say 'your notes'.\n"
+    "- Match the length to the question: a quick question gets a quick answer (one to "
+    "four sentences); 'explain', 'in detail', 'teach', 'list' or 'each' gets a fuller one "
+    "with short paragraphs or a list.\n"
+    "- Use the earlier conversation to understand what the student means by 'it', 'that', "
+    "'each concept' and so on, and don't repeat what you already said unless asked.\n"
+    "- If they ask what a slide or page says, or to read, recite or quote it, give the "
+    "notes' wording faithfully.\n"
+    + _GROUNDING
 )
- 
-# --- Teach Me: pedagogical delivery + memory, strict off-material refusal ------
+
+# --- Teach Me: a tutor that keeps the conversation going --------------------------
 TEACH_PROMPT = (
-    "You are a patient study tutor. Teach the student using the context passages "
-    "provided. Each passage begins with a source tag in square brackets, like "
-    "[Notes \u00b7 p3]; cite the exact tag after facts you use.\n"
-    "GROUNDING (strict):\n"
-    "- For topics that DO appear in the context, you may explain, give worked "
-    "examples, and use analogies freely. Invent examples to illustrate, but do not "
-    "invent new facts about the subject beyond what the context supports.\n"
-    "- If the student asks about a topic that is NOT covered by the context passages, "
-    "do NOT redirect to the current topic and do NOT guess. Reply with EXACTLY this, "
-    "and nothing else: \"I don't have that in the material.\"\n"
+    "You are Vidhy\u0101sathi, a patient study tutor who has read the student's notes "
+    "closely. Teach like a good human tutor in a one-to-one chat.\n"
     "Teaching style:\n"
-    "- Teach ONE idea at a time, in plain language, building on what the student "
-    "already knows from earlier in the conversation.\n"
+    "- Teach ONE idea at a time, in plain language, building on what the student already "
+    "knows from earlier in the conversation. Never dump everything at once.\n"
+    "- Use worked examples and everyday analogies to illustrate (you may invent the "
+    "example, but not new facts about the subject).\n"
     "- If an idea needs a prerequisite the student may be missing, cover it briefly first.\n"
-    "- Keep each reply short. End by checking understanding or asking one guiding "
-    "question, so it stays a back-and-forth, not a lecture.\n"
-    "- Adapt: if the student is stuck, slow down and give a concrete example; if they "
-    "clearly get it, move on. Never dump everything at once."
+    "- Keep each reply short and end with one question that checks understanding or "
+    "invites the next step, so it stays a conversation.\n"
+    "- If the student says yes / ok / next, move on to the next idea. If they say no or "
+    "seem stuck, explain the same idea more simply with a concrete example.\n"
+    "- Never mention 'passages' or 'context'; say 'your notes' if you need to.\n"
+    + _GROUNDING
 )
- 
-# --- Groundedness gate: strict retrieval checker (one word out) ---------------
+
+# --- Groundedness gate: do the notes cover this (fully or partly)? ---------------
 GROUND_CHECK = (
-    "You are a strict retrieval checker. Given some context passages and a question, "
-    "decide whether the passages actually contain the information needed to answer it. "
-    "Reply with ONLY one word: YES or NO. Say YES only if the answer is genuinely present "
-    "in the passages. If the passages are about a different topic, or only loosely "
-    "related, reply NO."
+    "You are a retrieval checker for a study app. Given some notes passages and a "
+    "student's question, decide whether the passages contain information that answers "
+    "the question, fully or partly. Reply with ONLY one word: YES or NO.\n"
+    "Say YES if the passages explain, define, list or describe what the question asks "
+    "about, even if they don't cover every detail. Say NO only if the passages are about "
+    "something else or merely share a word with the question."
 )
- 
+
 # --- Overview: broad "explain everything in the module" asks -----------------
 # A pointed groundedness check ("do these passages answer THIS?") always fails for a
 # whole-module ask, so those questions used to refuse. For a broad ask we instead
 # synthesise a structured tour of whatever the student's own passages actually cover.
 OVERVIEW_PROMPT = (
-    "You are a study assistant giving a STRUCTURED OVERVIEW of the student's own "
-    "material. Using ONLY the context passages, identify the main concepts/topics they "
-    "cover and briefly explain each one.\n"
-    "- Present them as a short organised list: each item a concept name, then a one- or "
-    "two-line explanation, then the exact bracketed [source \u00b7 loc] tag it came from.\n"
+    "You are Vidhy\u0101sathi, a study assistant giving a STRUCTURED OVERVIEW of the "
+    "student's own notes: walk them through the concepts the passages cover, like a "
+    "friend going through the module with them.\n"
+    "- Go concept by concept, in the order the notes present them: the concept's name in "
+    "bold, its explanation, then the exact bracketed [source \u00b7 loc] tag it came from.\n"
+    "- Depth: if the student asks for detail ('in detail', 'each concept', 'fully', "
+    "'properly'), give each concept a proper explanation of a few sentences using "
+    "everything the notes say about it; otherwise one or two lines each.\n"
     "- Only include concepts that genuinely appear in the passages. Do NOT add anything "
-    "from outside knowledge, and do not pad with topics that aren't there.\n"
+    "from outside knowledge. If a concept is only named in the notes without an "
+    "explanation, give what the notes say and add '(only named in your notes)'.\n"
+    "- Never mention 'passages' or 'context'; say 'your notes'.\n"
     "- If the passages contain no teachable concepts at all, say exactly: "
     "\"I don't have that in the material.\""
 )
 
-# Broad-intent triggers: phrases that ask for an OVERVIEW. Scope words on their own
-# ("the module", "my notes") do NOT make a question broad — "Explain Kruskal's
-# algorithm from the module" is a pointed question.
-_BROAD_PHRASES = (
-    "all the concept", "all concepts", "every concept", "all the topic", "all topics",
-    "all the idea", "main concept", "key concept", "main topic", "key topic", "main idea",
-    "key idea", "explain concepts", "explain the concepts", "concepts in", "concepts of",
-    "topics in", "everything in", "everything about", "explain everything",
-    "overview of", "an overview", "summarize", "summarise", "summary of", "a summary",
-    "outline of", "go over everything", "what does this cover", "what is covered",
-    "what do my notes cover", "what does my material cover",
-)
-
-# Letters + digits + Indic combining marks (virama, vowel signs) + ZWJ/ZWNJ, so a
-# Malayalam or Hindi word stays ONE word instead of splitting at every vowel sign.
-_WORD = re.compile(r"(?:[^\W_]|[\u0900-\u0DFF\u200C\u200D])+", re.UNICODE)
-_STOP = {
-    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "from", "about",
-    "is", "are", "was", "be", "it", "its", "this", "that", "these", "those", "what",
-    "which", "how", "why", "me", "my", "i", "you", "your", "do", "does", "can", "please",
-    "give", "tell", "explain", "describe", "list", "all", "every", "everything", "main",
-    "key", "important", "whole", "entire", "briefly", "go", "over", "s", "us", "we", "our",
-    # politeness / framing of the request, never the topic
-    "could", "would", "will", "kindly", "hey", "hi", "hello", "just", "quick", "quickly",
-    "short", "shortly", "brief", "simple", "simply", "easy", "detailed", "help", "want",
-    "need", "like", "make", "write", "prepare", "create", "show", "so", "understand",
-    "bullet", "bullets", "point", "points", "form", "format", "way", "table", "words",
-    "tomorrow", "tomorrows", "today", "tonight", "exam", "exams", "test", "tests", "quiz",
-    "revision", "revise", "study", "studying", "prep", "before", "upcoming", "next",
-}
-# words that only name the scope or the request, never a topic
-_SCOPE = {
-    "module", "modules", "chapter", "chapters", "unit", "units", "note", "notes",
-    "material", "materials", "syllabus", "document", "documents", "doc", "docs", "file",
-    "files", "pdf", "pptx", "ppt", "docx", "slide", "slides", "lecture", "lectures",
-    "concept", "concepts", "topic", "topics", "idea", "ideas", "summarize", "summarise",
-    "summary", "overview", "outline", "cover", "covers", "covered", "covering",
-    "presentation", "deck", "point", "points",
-}
-
-
-def _words(text: str) -> list[str]:
-    return [w for w in _WORD.findall((text or "").lower()) if len(w) > 1 or w.isdigit()]
-
-
-def _is_broad(question: str) -> bool:
-    q = question.lower()
-    return any(p in q for p in _BROAD_PHRASES)
+from src.answer_words import STOP as _STOP, SCOPE as _SCOPE, FOLLOWUP as _FOLLOWUP, words as _words  # noqa: E402
+from src.answer_words import BROAD_PHRASES as _BROAD_PHRASES, is_broad as _is_broad  # noqa: E402
 
 
 def _broad_topic(question: str) -> str:
@@ -150,25 +131,49 @@ def _broad_topic(question: str) -> str:
                     if w not in _STOP and w not in _SCOPE and not w.isdigit())
 
 
+def _stem(w: str) -> str:
+    return w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+
+
+_NUMBERED_ASK = re.compile(r"\b(?:module|mod|unit|chapter|ch|part|lecture|lesson|deck|"
+                           r"section|week|topic)\s*[-#:.]?\s*(\d{1,3})\b", re.I)
+_NUMBERED_LABEL = re.compile(r"^\s*(?:(?:module|mod|unit|chapter|ch|part|lecture|lesson|"
+                             r"week|copy\s+of\s+module)\s*[-#:.]?\s*)?(\d{1,3})\b", re.I)
+
+
 def _match_documents(question: str, topic: str, user: str | None) -> list[str]:
-    """Labels of the student's documents the ask names: "summarise module 2" -> the
-    "Module 2" document; "my graphs notes" -> every document whose name has "graphs"."""
-    labels = list(user_sources(user))
-    qw = set(_words(question))
+    """Labels of the student's documents the ask names:
+    "summarise module 3"                       -> "3. DATA COMMUNICATION CONCEPTS"
+    "each concept of data communication"       -> the same document
+    "my graphs notes"                          -> every document whose name has "graphs"."""
+    labels = [l for l in user_sources(user) if l != converse.HELPER_SOURCE]
+    # 1. by number: "module 3", "unit 2", "chapter 4"
+    nums = {n.lstrip("0") or "0" for n in _NUMBERED_ASK.findall(question or "")}
+    if nums:
+        hit = []
+        for label in labels:
+            m = _NUMBERED_LABEL.match(label)
+            inner = {x.lstrip("0") or "0" for x in _NUMBERED_ASK.findall(label)}
+            if (m and (m.group(1).lstrip("0") or "0") in nums) or (inner & nums):
+                hit.append(label)
+        if hit:
+            return sorted(hit)
+    # 2. every meaningful word of the document's name appears in the ask
+    qw = {_stem(w) for w in _words(question)}
     named = []
     for label in labels:
-        lw = set(_words(label))
-        significant = {w for w in lw if w not in _STOP and w not in _SCOPE} | \
-                      {w for w in lw if w.isdigit()}
-        if significant and lw - _STOP <= qw:
+        lw = {_stem(w) for w in _words(label) if not w.isdigit()} - _STOP
+        meaningful = {w for w in lw if w not in {_stem(x) for x in _SCOPE}}
+        if meaningful and lw <= qw:
             named.append((len(lw), label))
     if named:
         best = max(n for n, _ in named)
         return sorted(label for n, label in named if n == best)
-    tw = set(topic.split())
+    # 3. the topic left in the ask is part of a document's name ("guided media")
+    tw = {_stem(w) for w in topic.split()}
     if not tw:
         return []
-    return sorted(label for label in labels if tw <= set(_words(label)))
+    return sorted(label for label in labels if tw <= {_stem(w) for w in _words(label)})
 
 
 # --- Layer 3: web-grounded, but re-expressed in the student's note style ------
@@ -240,7 +245,10 @@ def _style_exemplars(hits: list[dict]) -> str:
  
  
 def chat_llm(messages: list[dict]) -> str:
-    resp = ollama.chat(model=LLM_MODEL, messages=messages, options={"temperature": 0.1})
+    # num_ctx: Ollama's default window is small and silently cuts long prompts, so the
+    # model would answer from a truncated set of notes. 8k fits notes + conversation.
+    resp = ollama.chat(model=LLM_MODEL, messages=messages,
+                       options={"temperature": 0.2, "num_ctx": 8192})
     return resp["message"]["content"].strip()
  
  
@@ -309,19 +317,21 @@ def _doc_order(chunks: list[dict]) -> list[dict]:
     return sorted(chunks, key=lambda c: (c["source"], c["order"], c["chunk_id"]))
  
  
-def _window_query(question: str, history: list[dict] | None) -> str:
-    """Fold in the last user turn so contextless follow-ups still retrieve on the
-    current topic. Used ONLY as a rescue when the standalone question fails to ground."""
-    prior_user = [m["content"] for m in _clean_history(history) if m["role"] == "user"]
-    window = prior_user[-1:] + [question]
-    return " ".join(window)
- 
- 
+def _hist_for_model(history: list[dict], turns: int = 6) -> list[dict]:
+    """Recent conversation for the answering model, kept short so the notes fit."""
+    out = []
+    for m in history[-turns:]:
+        limit = 700 if m["role"] == "assistant" else 400
+        c = m["content"] if len(m["content"]) <= limit else m["content"][:limit] + " \u2026"
+        out.append({"role": m["role"], "content": c})
+    return out
+
+
 def _retrieve(query: str, user: str | None = None, broad: bool = False,
-              source: str | None = None):
+              source=None):
     """Return (hits, top_score, mode_label) for a query, scoped to `user` (and to one
-    document's label when `source` is given). `broad=True` widens the pool and keeps
-    more chunks, for overviews. top_score is the best cosine among the kept hits —
+    or more document labels when `source` is given). `broad=True` widens the pool and
+    keeps more chunks, for overviews. top_score is the best cosine among the kept hits —
     the gate's bands are defined on cosine, not on the re-ranker's order."""
     total = count(user)
     small = 0 < total <= SMALL_KB_MAX
@@ -339,39 +349,50 @@ def _retrieve(query: str, user: str | None = None, broad: bool = False,
         hits = ranked
         label = f"large-kb ({total} chunks): retrieve + re-rank"
     return hits, top_score, label
- 
- 
-# Words that make a follow-up refer back to the previous turn rather than name a
-# new topic ("why?", "give me an example", "explain that again").
-_FOLLOWUP = {
-    "why", "how", "what", "example", "examples", "more", "again", "simpler", "simply",
-    "mean", "means", "meaning", "work", "works", "working", "elaborate", "detail",
-    "details", "clarify", "understand", "dont", "don", "get", "next", "continue",
-    "another", "step", "steps", "show", "prove", "proof", "they", "them", "then", "so",
-    "okay", "ok", "yes", "no", "sure", "and", "but", "also", "else", "other", "same",
-    "one", "case", "cases", "use", "used", "happens", "happen", "part", "bit", "lot",
-    "term", "terms", "simple", "simpler", "easier", "plain", "real", "life", "analogy",
-    "confused", "confusing", "lost", "slower", "slow", "slowly", "repeat", "understood",
-    "sorry", "didn", "didnt", "still", "not", "very", "really", "little", "less", "shorter",
-    "say", "said", "mean", "meant", "point", "idea", "thing", "things", "previous", "above",
-}
 
 
-def _new_topic_words(question: str) -> set[str]:
-    return {w for w in _words(question) if w not in _STOP and w not in _FOLLOWUP}
+def _whole_documents(labels: list[str], user: str | None, budget: int = WHOLE_DOC_CHARS):
+    """Every chunk of the named documents, in order — "explain each concept of module 2"
+    deserves the whole module, not the 12 passages that happen to rank highest. If the
+    documents are longer than the budget, chunks are sampled evenly across them."""
+    chunks = []
+    for label in labels:
+        chunks += user_chunks(user, FieldCondition(key="source", match=MatchValue(value=label)))
+    if not chunks:
+        return []
+    total = sum(len(c["text"]) for c in chunks)
+    if total > budget:
+        keep = max(1, int(len(chunks) * budget / total))
+        step = len(chunks) / keep
+        chunks = [chunks[int(i * step)] for i in range(keep)]
+    for c in chunks:
+        c["score"] = 1.0
+    return chunks
+
+
+def _gate_lookup(query: str, user: str | None):
+    hits, top_score, label = _retrieve(query, user=user)
+    context = build_context(hits)
+    return hits, top_score, label, context, _gate(query, context, top_score)
 
 
 def _material_lookup(question: str, mode: str, history: list[dict] | None,
-                     user: str | None = None):
-    """Standalone question first; window rescue only if it doesn't ground.
+                     user: str | None = None, original: str | None = None):
+    """Find the notes for a (standalone) question.
     Returns (hits, top_score, mode_label, context, grounded, overview)."""
+    hist = _clean_history(history)
+    original = original or question
     if _is_broad(question):
         topic = _broad_topic(question)
         docs = _match_documents(question, topic, user)
+        if docs:
+            hits = _whole_documents(docs, user)
+            if hits:
+                return (hits, 1.0, f"whole document: {', '.join(docs)}", build_context(hits),
+                        True, True)
         if not topic or docs:
-            # whole material (or the named documents): grounded iff there is material
-            hits, top_score, label = _retrieve(question, user=user, broad=True,
-                                               source=docs or None)
+            # whole material: grounded iff there is material
+            hits, top_score, label = _retrieve(question, user=user, broad=True)
             return hits, top_score, label, build_context(hits), bool(hits), True
         # a broad ask ABOUT a topic ("summarise quantum mechanics"): the topic itself
         # has to be in the material, exactly like a pointed question
@@ -379,61 +400,112 @@ def _material_lookup(question: str, mode: str, history: list[dict] | None,
         context = build_context(hits)
         return hits, top_score, label, context, _gate(topic, context, top_score), True
 
-    hits, top_score, label = _retrieve(question, user=user)
-    context = build_context(hits)
-    if _gate(question, context, top_score):
+    hits, top_score, label, context, ok = _gate_lookup(question, user)
+    if ok:
         return hits, top_score, label, context, True, False
 
-    # rescue: a contextless follow-up ('why?') — retry with the conversation window,
-    # but only if the question doesn't introduce a NEW topic the material lacks
-    if mode == "teach" and _clean_history(history):
-        wq = _window_query(question, history)
+    # rescue: a message that leans on the conversation and still didn't ground — retry
+    # with the conversation window, but never let it drag an old topic into a NEW one
+    if hist and converse.needs_context(original):
+        wq = converse.window_query(original, hist)
         if wq != question:
-            h2, s2, l2 = _retrieve(wq, user=user)
-            c2 = build_context(h2)
-            ctx_words = set(_words(c2))
-            new = _new_topic_words(question)
-            if new <= ctx_words and _gate(wq, c2, s2):
+            h2, s2, l2, c2, ok2 = _gate_lookup(wq, user)
+            if ok2 and converse.topic_words(original) <= set(_words(c2)):
                 return h2, s2, l2, c2, True, False
 
     return hits, top_score, label, context, False, False
 
 
+def _resolve(question: str, history: list[dict]) -> str:
+    """A follow-up rewritten into a standalone question (or converse.CHAT)."""
+    raw = call_llm(converse.rewrite_messages(question, history))
+    q2 = converse.clean_rewrite(raw, question, history)
+    if q2 is None:
+        return converse.window_query(question, history)
+    return q2
+
+
+def _reply(text: str, decision: str, **extra) -> dict:
+    out = {"answer": text, "raw_answer": text, "decision": decision, "grounded": False,
+           "offer_help": False, "caveat": "", "web_used": False, "web_sources": [],
+           "top_score": 0.0, "weak": False, "mode": "conversation", "sources": [],
+           "resolved_question": None, "suggestions": []}
+    out.update(extra)
+    return out
+
+
+def _chat(question: str, history: list[dict], user: str | None, hint: str = "") -> dict:
+    """Small talk, questions about the app or about what material there is."""
+    raw = call_llm(converse.chat_messages(question, history, user, hint)).strip()
+    raw = _NON_WEB_TAG.sub("", raw).strip() or "Hi! Ask me anything from your notes."
+    return _reply(raw, "chat")
+
+
 def answer(question: str, mode: str = "quick", history: list[dict] | None = None,
            web: bool = False, user: str | None = None) -> dict:
-    hits, top_score, mode_label, context, grounded, overview = _material_lookup(
-        question, mode, history, user=user)
- 
+    hist = _clean_history(history)
+    if not (question or "").strip():
+        return _reply(REFUSAL, "refuse", offer_help=False, weak=True)
+
+    # 1. what does the message mean?
+    kind = converse.classify(question, hist, mode)
+    if kind == "chat":
+        return _chat(question, hist, user)
+    query = question
+    if kind == "followup":
+        query = _resolve(question, hist)
+        if query == converse.CHAT:
+            return _chat(question, hist, user)
+
+    # 2. find the notes: a named slide/page directly, otherwise search
+    recall = []
+    if converse.wanted_locs(query):
+        named = _match_documents(query, _broad_topic(query), user)
+        recall, ambiguous = converse.locate(query, user, named, hist)
+        if ambiguous and not recall:
+            return _chat(question, hist, user, hint=(
+                "Several of the student's documents have that slide/page: "
+                + ", ".join(ambiguous) + ". Ask which document they mean."))
+    if recall:
+        for c in recall:
+            c["score"] = 1.0
+        hits, top_score, mode_label = recall, 1.0, "exact slide/page"
+        context, grounded, overview = build_context(hits), True, False
+    else:
+        hits, top_score, mode_label, context, grounded, overview = _material_lookup(
+            query, mode, hist, user=user, original=question)
+
+    # 3. answer
+    asked = f"Student's message: {question}" + (
+        f"\n(What they mean: {query})" if query != question else "")
     if not grounded:
         raw = REFUSAL
         decision = "refuse"
     elif overview:
         # whole-module tour, synthesised from the student's own passages
-        raw = ask_llm(OVERVIEW_PROMPT,
-                      f"Context passages:\n{context}\n\nRequest: {question}")
+        raw = call_llm([{"role": "system", "content": OVERVIEW_PROMPT},
+                        *_hist_for_model(hist, 4),
+                        {"role": "user", "content":
+                            f"Notes passages:\n{context}\n\n{asked}"}])
         decision = "refuse" if _is_refusal(raw) else "answer"
     else:
-        if mode == "teach":
-            messages = [{"role": "system", "content": TEACH_PROMPT}]
-            messages += _clean_history(history)
-            messages.append({"role": "user",
-                             "content": f"Context passages:\n{context}\n\nStudent: {question}"})
-            raw = call_llm(messages)
-        else:
-            raw = ask_llm(SYSTEM_PROMPT, f"Context passages:\n{context}\n\nQuestion: {question}")
+        system = TEACH_PROMPT if mode == "teach" else SYSTEM_PROMPT
+        messages = [{"role": "system", "content": system}, *_hist_for_model(hist)]
+        messages.append({"role": "user", "content": f"Notes passages:\n{context}\n\n{asked}"})
+        raw = call_llm(messages)
         if _is_refusal(raw):
             decision = "refuse"
         elif top_score < ANSWER_SCORE:
             decision = "answer_uncertain"
         else:
             decision = "answer"
- 
+
     # --- Layer 3 (last resort): grounding failed AND the web toggle is on --------
-    # Web search uses the CLEAN current question, never the conversation window.
+    # Web search uses the standalone question, never the conversation window.
     web_used = False
     web_sources: list[dict] = []
     if web and decision == "refuse":
-        passages = web_context(question)
+        passages = web_context(query)
         if passages:
             wctx = build_context(passages)
             style_ref = _style_exemplars(hits)
@@ -442,7 +514,7 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
                 {"role": "user", "content":
                     f"WEB passages (the only facts you may use):\n{wctx}\n\n"
                     f"Untagged samples of the student's own note style to imitate:\n{style_ref}\n\n"
-                    f"Question: {question}"},
+                    f"Question: {query}"},
             ])
             web_raw = _scrub_web_tags(web_raw)   # hard guarantee: no notes-style tags survive
             if not _is_refusal(web_raw):
@@ -450,17 +522,17 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
                 decision = "answer_web"
                 web_used = True
                 web_sources = [{"source": p["source"], "url": p["url"]} for p in passages]
- 
+
     shown = REFUSAL if decision == "refuse" else raw
     offer_help = decision in ("answer_uncertain", "refuse")
- 
+
     # OCR nudge applies ONLY to answers drawn from the student's OCR'd material —
     # never to a web answer (its text isn't from a scanned source) or a refusal.
     ocr_used = any(h.get("ocr") for h in _cited_hits(shown, hits))
     caveat = ("\u21b3 This draws on a handwritten/scanned source \u2014 worth "
               "double-checking the equation.") if (
         decision in ("answer", "answer_uncertain") and ocr_used and _has_math(shown)) else ""
- 
+
     return {
         "answer": shown,
         "raw_answer": raw,
@@ -473,13 +545,15 @@ def answer(question: str, mode: str = "quick", history: list[dict] | None = None
         "top_score": top_score,
         "weak": decision != "answer",
         "mode": mode_label,
+        "resolved_question": query if query != question else None,
+        "suggestions": converse.suggestions(user, hits) if decision == "refuse" else [],
         "sources": ([{"source": w["source"], "loc": "", "url": w["url"], "score": None,
                       "ocr": False} for w in web_sources] if web_used else
                     [{"source": h["source"], "loc": h["loc"],
                       "score": h["score"], "ocr": h["ocr"]} for h in hits]),
     }
- 
- 
+
+
 if __name__ == "__main__":
     import sys
     from src.store import close

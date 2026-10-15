@@ -140,6 +140,8 @@ def run_checks(ta, tb):
            r1.get("decision") != "refuse" and r2.get("decision") != "refuse",
            f"{r1.get('decision')} → {r2.get('decision')}", dt1 + dt2, level="WARN")
 
+    conversation_checks(ta)
+
     st, ex, dt = call("POST", "/api/exam", {"topic": "the Division Algorithm", "n": 3}, token=ta)
     items = ex.get("items", [])
     record("practice set generated with cited answers", ex.get("grounded") and len(items) >= 1,
@@ -163,6 +165,54 @@ def run_checks(ta, tb):
     st, r, dt = call("POST", "/api/answer", {"question": "State the Division Algorithm."}, token=ta)
     record("removed material no longer answers", r.get("decision") == "refuse",
            f"decision={r.get('decision')}", dt)
+
+
+def _say(token, hist, question, mode="quick"):
+    """One chat turn, exactly as the page sends it; returns (reply, new history, seconds)."""
+    st, r, dt = call("POST", "/api/answer", {"question": question, "mode": mode,
+                                             "history": hist[-20:]}, token=token)
+    hist = hist + [{"role": "user", "content": question},
+                   {"role": "assistant", "content": str(r.get("answer", ""))}]
+    shown = (r.get("answer") or str(r))[:160].replace("\n", " ")
+    meant = f" | understood as: {r['resolved_question']}" if r.get("resolved_question") else ""
+    print(f"      you: {question}\n      bot [{r.get('decision')}]: {shown}{meant}")
+    return r, hist, dt
+
+
+def conversation_checks(ta):
+    """The way people actually chat — these exact turns used to be refused."""
+    print("\n  conversation:")
+    h = []
+    r, h, dt = _say(ta, h, "hi")
+    record("'hi' gets a friendly reply", r.get("decision") == "chat"
+           and "don't have that" not in (r.get("answer") or ""), "", dt)
+
+    r, h, dt = _say(ta, h, "What is the Euclidean algorithm?")
+    record("quick question answered", r.get("decision") in ("answer", "answer_uncertain"), "", dt)
+    r, h, dt = _say(ta, h, "teach me it", mode="teach")
+    record("'teach me it' after a quick answer teaches that topic",
+           r.get("decision") in ("answer", "answer_uncertain"),
+           f"decision={r.get('decision')}", dt)
+    r, h, dt = _say(ta, h, "ok", mode="teach")
+    record("'ok' in a lesson continues the lesson", r.get("decision") in ("answer", "answer_uncertain"),
+           f"decision={r.get('decision')}", dt, level="WARN")
+    r, h, dt = _say(ta, h, "what about primes?")
+    record("'what about primes?' follows on", r.get("decision") in ("answer", "answer_uncertain"),
+           f"decision={r.get('decision')}", dt)
+    r, h, dt = _say(ta, h, "and what about photosynthesis?")
+    record("a new off-material topic mid-chat is still refused", r.get("decision") == "refuse",
+           f"decision={r.get('decision')}", dt)
+
+    h = []
+    r, h, dt = _say(ta, h, "Explain all the concepts in my notes")
+    r, h, dt = _say(ta, h, "explain each concept in detail")
+    record("'explain each concept in detail' after an overview", r.get("decision") == "answer",
+           f"decision={r.get('decision')}", dt)
+    r, h, dt = _say(ta, h, "thanks!")
+    record("'thanks' gets a friendly reply", r.get("decision") == "chat", "", dt)
+    r, h, dt = _say(ta, [], "what files do I have?")
+    record("'what files do I have?' lists the material", r.get("decision") == "chat"
+           and "number" in (r.get("answer") or "").lower(), "", dt, level="WARN")
 
 
 def finish():

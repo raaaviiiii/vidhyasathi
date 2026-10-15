@@ -214,6 +214,39 @@ def _scroll_field(user, field):
     return seen
 
 
+def user_chunks(user, *extra, limit: int | None = None) -> list[dict]:
+    """Every chunk in a student's bucket (optionally narrowed by extra conditions),
+    in document order: [{source, doc, loc, order, chunk_id, text, ocr}]."""
+    client = get_client()
+    if not client.collection_exists(COLLECTION_NAME):
+        return []
+    out, seen, offset = [], set(), None
+    while True:
+        pts, offset = client.scroll(
+            collection_name=COLLECTION_NAME, scroll_filter=user_filter(user, *extra),
+            with_payload=True, with_vectors=False, limit=512, offset=offset)
+        for p in pts:
+            pl = p.payload or {}
+            key = (pl.get("source"), pl.get("loc"), pl.get("chunk_id"))
+            if key in seen or not pl.get("text"):
+                continue                        # mid-re-upload, two versions can coexist
+            seen.add(key)
+            out.append({"source": pl.get("source", "document"), "doc": pl.get("doc"),
+                        "loc": pl.get("loc", ""), "order": pl.get("order", 0),
+                        "chunk_id": pl.get("chunk_id", 0), "text": pl["text"],
+                        "ocr": pl.get("ocr", False)})
+        if offset is None or (limit and len(out) >= limit):
+            break
+    out.sort(key=lambda c: (c["source"], c["order"], c["chunk_id"]))
+    return out[:limit] if limit else out
+
+
+def chunks_at(user, source: str, loc: str) -> list[dict]:
+    """The chunk(s) at one locator of one document — 'slide 4', 'p12'."""
+    return user_chunks(user, _source_cond(source),
+                       FieldCondition(key="loc", match=MatchValue(value=loc)))
+
+
 def user_sources(user):
     """Distinct citation labels in a bucket."""
     return _scroll_field(user, "source")

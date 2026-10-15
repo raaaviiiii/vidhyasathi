@@ -407,15 +407,16 @@ test('sign-out while an answer is pending: the late answer is not saved', async 
 });
 
 // REG-F10
-test('REG-F10: switching to Teach while a Quick answer is in flight does not put that exchange into teach history', async () => {
+test('REG-F10: switching mode while an answer is in flight records that exchange exactly once in the shared conversation', async () => {
   const slow = deferred();
   const env = boot({ storage: ASHA, routes: { '/api/answer': slow } });
   env.$('#input').value = 'quick question'; env.window.send(); await env.settle();
   env.click('.chip[data-mode=teach]');
   slow.resolve(ans('quick answer')); await env.settle();
   // (compare as JSON: an array created inside the page is from another JS realm)
-  assert.equal(env.ev('JSON.stringify(history)'), '[]',
-    'send() checks the CURRENT mode after the await, not the mode the question was asked in');
+  // every mode now shares one conversation (so "teach me it" after a Quick answer works)
+  assert.equal(env.ev('JSON.stringify(history)'),
+    '[{"role":"user","content":"quick question"},{"role":"assistant","content":"quick answer"}]');
 });
 
 // REG-F11

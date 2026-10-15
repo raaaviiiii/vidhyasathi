@@ -71,13 +71,56 @@ test('teach mode: history grows and is sent on the follow-up', async () => {
   assert.deepEqual(c[1].body.history, [{ role: 'user', content: 'teach me primes' }, { role: 'assistant', content: 'A1' }]);
 });
 
-test('quick mode never sends history even after a teach exchange', async () => {
-  const env = boot({ storage: USER });
+test('the conversation is sent in every mode, so follow-ups like "teach me it" work', async () => {
+  let n = 0;
+  const env = boot({ storage: USER, routes: { '/api/answer': () => ({ answer: 'A' + (++n), decision: 'answer', top_score: 0.8, sources: [] }) } });
+  await env.ask('what is guided media');            // Quick Answer
   env.window.setModeByName('teach');
-  await env.ask('one');
+  await env.ask('teach me it');                     // Teach Me must see the quick turn
+  const c = env.callsTo('/api/answer');
+  assert.deepEqual(c[1].body.history, [{ role: 'user', content: 'what is guided media' }, { role: 'assistant', content: 'A1' }]);
   env.window.setModeByName('quick');
-  await env.ask('two');
-  assert.deepEqual(env.callsTo('/api/answer')[1].body.history, []);
+  await env.ask('explain each concept in detail');
+  assert.equal(env.callsTo('/api/answer')[2].body.history.length, 4);
+});
+
+test('history sent with a question is capped', async () => {
+  const env = boot({ storage: USER });
+  for (let i = 0; i < 14; i++) await env.ask('q' + i);
+  const h = env.callsTo('/api/answer').at(-1).body.history;
+  assert.ok(h.length <= 20 && h.length > 0);
+  assert.equal(h.at(-2).content, 'q12');
+});
+
+test('a small-talk reply shows no badges, score, sources or helper button', async () => {
+  const env = boot({ storage: USER, routes: { '/api/answer': { answer: 'Hi! Ask me about your notes.', decision: 'chat', top_score: 0, sources: [], offer_help: false } } });
+  await env.ask('hi');
+  const b = env.lastBot();
+  assert.match(b.querySelector('.bubble').textContent, /Hi!/);
+  assert.equal(b.querySelectorAll('.tag').length, 0);
+  assert.equal(b.querySelector('.srcline'), null);
+  assert.equal(b.querySelector('.askhelp'), null);
+});
+
+test('a follow-up shows what it was understood as, and Ask a helper uses that', async () => {
+  const env = boot({ storage: USER, routes: { '/api/answer': { answer: "I don't have that in the material.", decision: 'refuse', top_score: 0.2, offer_help: true, sources: [], resolved_question: 'Teach me guided transmission media' } } });
+  await env.ask('teach me it');
+  assert.match(env.lastBot().querySelector('.understood').textContent, /understood as: Teach me guided transmission media/);
+  env.lastBot().querySelector('.askhelp').click(); await env.settle();
+  assert.equal(env.$('#hq').value, 'Teach me guided transmission media');
+});
+
+test('a refusal offers the closest topics the notes DO cover, one click to ask', async () => {
+  let n = 0;
+  const env = boot({ storage: USER, routes: { '/api/answer': () => (++n === 1
+    ? { answer: "I don't have that in the material.", decision: 'refuse', top_score: 0.2, offer_help: true, sources: [], suggestions: [{ label: 'Twisted pair cable', ask: 'Explain Twisted pair cable' }, { label: '<img src=x onerror=alert(1)>', ask: 'x' }] }
+    : { answer: 'ok', decision: 'answer', top_score: 0.8, sources: [] }) } });
+  await env.ask('what is fibre to the home');
+  const btns = env.lastBot().querySelectorAll('.suggest button');
+  assert.equal(btns.length, 2);
+  assert.equal(env.lastBot().querySelector('.suggest img'), null, 'labels are text, never HTML');
+  btns[0].click(); await env.settle();
+  assert.equal(env.callsTo('/api/answer').at(-1).body.question, 'Explain Twisted pair cable');
 });
 
 test('exam mode: posts /api/exam with topic + n=5 and renders numbered Q/A', async () => {

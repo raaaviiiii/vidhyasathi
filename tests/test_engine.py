@@ -306,7 +306,7 @@ def test_teach_passes_history_to_tutor(fakes, index_text):
     index_text(A, "Number Theory", NUMBER_THEORY)
     answer(NT_STRONG, mode="teach", history=_HIST, user=A)
     (_, msgs), = [c for c in fakes.llm.calls if c[0] == "teach"]
-    assert msgs[1:3] == _HIST and msgs[-1]["content"].endswith("Student: " + NT_STRONG)
+    assert msgs[1:3] == _HIST and msgs[-1]["content"].endswith("Student's message: " + NT_STRONG)
 
 
 def test_teach_history_cannot_inject_system_role(fakes, index_text):
@@ -322,7 +322,8 @@ def test_teach_history_cannot_inject_system_role(fakes, index_text):
 def test_teach_malformed_history_entry_does_not_crash(fakes, index_text):
     index_text(A, "Number Theory", NUMBER_THEORY)
     r = answer("why?", mode="teach", history=[{"role": "user"}], user=A)
-    assert r["decision"] in ("refuse", "answer", "answer_uncertain")
+    # nothing usable came before "why?", so it is a conversational nudge, not a search
+    assert r["decision"] in ("refuse", "answer", "answer_uncertain", "chat")
 
 
 def test_empty_question_refuses_without_llm(fakes, index_text):
@@ -331,10 +332,14 @@ def test_empty_question_refuses_without_llm(fakes, index_text):
     assert r["decision"] == "refuse" and fakes.llm.calls == []
 
 
-def test_quick_mode_has_no_window_rescue(fakes, index_text):
+def test_quick_mode_understands_followups(fakes, index_text):
+    """Quick Answer is a conversation too: 'why?' after a question is about that question
+    (it used to be searched literally and refused)."""
     index_text(A, "Number Theory", NUMBER_THEORY)
     r = answer("why?", mode="quick", history=_HIST, user=A)
-    assert r["decision"] == "refuse"
+    assert r["decision"] in ("answer", "answer_uncertain")
+    assert fakes.llm.count("rewrite") == 1
+    assert r["resolved_question"]
 
 
 def test_teach_new_off_material_topic_gets_exact_refusal(fakes, index_text):

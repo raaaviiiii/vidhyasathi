@@ -128,6 +128,10 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 .note{font-size:13px;color:var(--t2);padding:2px 4px;display:flex;gap:7px;align-items:flex-start}
 .note .em{color:var(--saffron2)}
 .srcline{font-size:12px;color:var(--t3);padding:2px 4px}
+.understood{font-size:12px;color:var(--t3);padding:0 4px 2px;font-style:italic}
+.suggest{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:2px 4px;font-size:12.5px;color:var(--t2)}
+.suggest button{padding:5px 11px;border-radius:999px;border:1px solid rgba(217,180,90,.35);background:rgba(217,180,90,.07);color:var(--gold2);font-size:12.5px;cursor:pointer;font-family:inherit}
+.suggest button:hover{background:rgba(217,180,90,.15)}
 .webdisc{font-size:12.5px;color:#9fe3b7;padding:6px 10px;background:rgba(94,203,131,.08);border:1px solid rgba(94,203,131,.2);border-radius:10px}
 .webdisc a{color:#9fe3b7;opacity:.8}
 .examq{padding:12px 14px;border:1px solid var(--hair);border-radius:12px;margin-bottom:10px}
@@ -383,6 +387,8 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opa
 <script>
 const API = location.origin;   // same-origin when served by app.py
 let mode='quick', history=[], busy=false;
+const HISTORY_TURNS=20;      // messages of conversation sent with each question (server keeps the last 20)
+function remember(q,a){history.push({role:'user',content:String(q).slice(0,4000)});history.push({role:'assistant',content:String(a).slice(0,7900)});if(history.length>40)history=history.slice(-40);}
 
 /* ---------- SVG art generators ---------- */
 function petal(cx,cy,r1,r2,w,tip){return `M ${cx} ${cy-r1} C ${cx+w} ${cy-(r1+r2)/2} ${cx+w*0.55} ${cy-r2+tip} ${cx} ${cy-r2} C ${cx-w*0.55} ${cy-r2+tip} ${cx-w} ${cy-(r1+r2)/2} ${cx} ${cy-r1} Z`;}
@@ -622,6 +628,9 @@ function answerNode(r,q,entry){
   const kind=r.decision==='refuse'?'refuse':(r.decision==='answer_web'?'web':'');
   const d=msg('bot'+(kind?' '+kind:''),'VIDHYĀSATHI');
   d.append(renderMd(el('div','bubble'),r.answer));
+  if(r.decision==='chat')return d;                 // small talk: no badges, scores or sources
+  if(typeof r.resolved_question==='string'&&r.resolved_question.trim())
+    d.append(el('div','understood','\u21b3 understood as: '+r.resolved_question.trim().slice(0,200)));
   const meta=el('div','meta');
   const badge=DECISIONS[r.decision];
   if(badge)meta.append(el('span','tag '+badge[0],badge[1]));
@@ -645,12 +654,20 @@ function answerNode(r,q,entry){
       : ' Not fully sure — you can ask a human helper.'));
     d.append(n);
   }
+  if(r.decision==='refuse'&&Array.isArray(r.suggestions)&&r.suggestions.length){
+    const sg=el('div','suggest');sg.append(el('span',null,'Your notes do cover:'));
+    r.suggestions.filter(x=>x&&typeof x==='object'&&typeof x.label==='string').slice(0,3).forEach(x=>{
+      const b=el('button',null,x.label.slice(0,60));b.type='button';
+      b.addEventListener('click',()=>{const inp=document.getElementById('input');if(!inp||busy)return;inp.value=String(x.ask||('Explain '+x.label)).slice(0,300);send();});
+      sg.append(b);});
+    d.append(sg);
+  }
   const src=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&typeof s==='object').map(s=>s.loc?`${s.source} \u00b7 ${s.loc}`:String(s.source||'')).filter(Boolean))].slice(0,5).join(';  ');
   if(src)d.append(el('div','srcline','sources: '+src));
   if(r.offer_help&&q){
     const b=el('button','askhelp','\ud83d\ude4b Ask a helper');b.type='button';
     if(entry&&entry.helpSent){b.disabled=true;b.textContent='\u2713 Sent to '+entry.helpSent;}
-    else b.addEventListener('click',()=>openAskHelper(q,r,b,entry));
+    else b.addEventListener('click',()=>openAskHelper((typeof r.resolved_question==='string'&&r.resolved_question.trim())||q,r,b,entry));
     d.append(b);
   }
   return d;
@@ -691,12 +708,14 @@ async function send(){
     if(reqMode==='exam'){
       const r=await post('/api/exam',{topic:q,n:5});
       if(gen!==chatGen)return; renderExam(r);
+      if(!r.error&&r.grounded&&Array.isArray(r.items)&&r.items.length)
+        remember('Make practice questions on '+q,(r.items||[]).filter(it=>it&&typeof it==='object').map((it,i)=>`Q${i+1}. ${it.q}\nA: ${it.a}`).join('\n'));
     }else{
       const web=document.getElementById('webToggle').classList.contains('on');
-      const r=await post('/api/answer',{question:q,mode:reqMode,web,history:reqMode==='teach'?history:[]});
+      const r=await post('/api/answer',{question:q,mode:reqMode,web,history:history.slice(-HISTORY_TURNS)});
       if(gen!==chatGen)return;
       renderAnswer(r,q);
-      if(reqMode==='teach'){history.push({role:'user',content:q});history.push({role:'assistant',content:String(r.answer||'')});}
+      remember(q,String(r.answer||''));
     }
   }catch(e){ if(gen===chatGen&&e.status!==401)renderError(e.message); }
   finally{ if(gen===chatGen)busy=false; }

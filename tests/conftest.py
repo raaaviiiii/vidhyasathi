@@ -102,7 +102,11 @@ class FakeLLM:
     @staticmethod
     def kind_of(system: str) -> str:
         s = system or ""
-        if "strict retrieval checker" in s:
+        if "query rewriter" in s:
+            return "rewrite"
+        if "friendly study companion" in s:
+            return "chat"
+        if "retrieval checker" in s:
             return "ground"
         if "STRUCTURED OVERVIEW" in s:
             return "overview"
@@ -140,6 +144,15 @@ class FakeLLM:
         return f"[{m.group(1)}]" if m else ""
 
     def _default(self, kind, user, system):
+        if kind == "rewrite":
+            # a plausible rewriter: the latest message, anchored to the last thing the
+            # student asked about (tests override this for specific cases)
+            latest = user.split("Latest message:", 1)[-1].split("\n")[0].strip()
+            convo = user.split("Latest message:", 1)[0]
+            prior = [l[len("Student: "):] for l in convo.splitlines() if l.startswith("Student: ")]
+            return f"{latest} ({prior[-1]})" if prior else latest
+        if kind == "chat":
+            return "Hi! Ask me anything from your notes."
         if kind == "ground":
             ctx, _, q = user.partition("Question:")
             q = q.replace("Answer YES or NO:", "")
