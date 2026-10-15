@@ -115,7 +115,8 @@ def test_eval_real_script_uses_a_temporary_bucket_and_cleans_up(fakes, tmp_path,
     up = tmp_path / "data" / "uploads" / "abc"; up.mkdir(parents=True)
     (up / "nt.txt").write_text("\n\n".join(NUMBER_THEORY * 2))
     (up / "graphs.md").write_text("\n\n".join(GRAPHS * 2))
-    monkeypatch.setattr(er, "ROOT", tmp_path)
+    monkeypatch.setattr(er, "UPLOADS_DIR", tmp_path / "data" / "uploads")
+    monkeypatch.setattr(er, "DOCS_DIR", tmp_path / "data" / "docs")
     monkeypatch.setattr(ev, "EVAL_DIR", tmp_path / "eval")
     fakes.llm.respond = _qa_writer
     monkeypatch.setattr(sys, "argv", ["eval_real.py", "--n", "3", "--negatives", "3"])

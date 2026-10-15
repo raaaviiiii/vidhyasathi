@@ -10,8 +10,8 @@
 # ============================================================
 cd "$(dirname "$0")" || exit 1
 PROJECT="$(pwd)"
-LOGDIR="$PROJECT/.logs"
-mkdir -p "$LOGDIR"
+source "$PROJECT/scripts/lib.sh"
+LOGDIR="$PRIVATE/logs"
 
 # ---- one-time: install the shell commands ----
 if [ "$1" = "--install" ]; then
@@ -22,23 +22,24 @@ if [ "$1" = "--install" ]; then
 # >>> vidhyasathi >>>
 alias vstart='"$PROJECT/start.sh"'
 alias vstop='"$PROJECT/stop.sh"'
-alias vcheck='"$PROJECT/Run Vidhyasathi Check.command"'
+alias vcheck='"$PROJECT/scripts/check.command"'
 # <<< vidhyasathi <<<
 EOF
   echo "Installed. Open a NEW terminal tab, then use:  vstart   vstop   vcheck"
   exit 0
 fi
 
+# the vcheck command moved to scripts/ — refresh an old shortcut silently
+if grep -q "Run Vidhyasathi Check.command" "$HOME/.zshrc" 2>/dev/null; then
+  "$0" --install >/dev/null && echo "(updated the vstart / vstop / vcheck shortcuts — open a new tab to use them)"
+fi
+
 LOCAL=0; [ "$1" = "--local" ] && LOCAL=1
-wait_for() { local n=$1; shift; for _ in $(seq 1 "$n"); do "$@" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
 die() { echo; echo "✗ $*"; exit 1; }
 
 echo "=============================================="
 echo "  Starting Vidhyāsathi"
 echo "=============================================="
-
-# settings (owner email etc.) live in .env
-if [ -f .env ]; then set -a; source .env; set +a; fi
 
 # ---- 0. already running? ----
 if [ -f "$LOGDIR/app.pid" ] && kill -0 "$(cat "$LOGDIR/app.pid")" 2>/dev/null; then
@@ -55,12 +56,12 @@ if ! docker info >/dev/null 2>&1; then
   wait_for 180 docker info || die "Docker Desktop didn't start. Open it manually, then run vstart again."
 fi
 
-# ---- 2. Qdrant ----
-echo "[2/6] knowledge base (Qdrant)…"
-docker start qdrant >/dev/null 2>&1 || docker run -d --name qdrant -p 6333:6333 \
-  -v "$PROJECT/qdrant_storage_server:/qdrant/storage" qdrant/qdrant >/dev/null \
-  || die "couldn't start the Qdrant container"
-wait_for 60 curl -s -m 2 http://localhost:6333/collections || die "Qdrant didn't come up on port 6333"
+# ---- 2. private files + Qdrant ----
+echo "[2/6] private files + knowledge base (Qdrant)…"
+tidy_private || die "couldn't move the knowledge base into private/"
+mkdir -p "$LOGDIR"
+load_env                                   # owner email, API key: private/.env
+start_qdrant || die "Qdrant didn't come up on port 6333"
 
 # ---- 3. Ollama ----
 echo "[3/6] language model (Ollama)…"

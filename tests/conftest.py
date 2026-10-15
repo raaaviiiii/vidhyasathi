@@ -24,6 +24,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+# tests must never tidy (move) the real project's private files
+os.environ["VS_NO_MIGRATE"] = "1"
 
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 os.environ.setdefault("VS_COLLECTION", f"vs_test_{uuid.uuid4().hex[:10]}")
@@ -234,10 +236,10 @@ def app_client(fakes, monkeypatch, tmp_path):
     import app as app_module
     monkeypatch.setattr(app_module, "BASE", tmp_path)
     monkeypatch.setattr(app_module, "USERS_DB", tmp_path / "users.db")
-    if hasattr(app_module, "DATA_DIR"):
-        monkeypatch.setattr(app_module, "DATA_DIR", tmp_path / "data")
-    if (ROOT / "index.html").exists() and not (tmp_path / "index.html").exists():
-        (tmp_path / "index.html").write_text((ROOT / "index.html").read_text())
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(app_module, "WEB_DIR", tmp_path)
+    if not (tmp_path / "index.html").exists():
+        (tmp_path / "index.html").write_text((ROOT / "web" / "index.html").read_text())
     c = TestClient(app_module.app)
     c.fakes = fakes
     c.tmp = tmp_path

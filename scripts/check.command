@@ -1,8 +1,8 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  Vidhyāsathi autopilot — double-click this file in Finder.
+#  Vidhyāsathi autopilot — run with:  vcheck
 #
-#  It does everything, start to finish, and writes a full log to logs/:
+#  It does everything, start to finish, and writes a full log to private/logs/:
 #    1. starts Docker Desktop and Ollama if they aren't running
 #    2. makes sure llama3.1:8b is pulled
 #    3. installs / updates the Python packages in .venv
@@ -16,12 +16,15 @@
 #  Option (when run from a terminal):  --no-eval   skip step 7 (saves a few minutes)
 #  This only CHECKS the app (on port 8765). To run it for real: vstart
 # ─────────────────────────────────────────────────────────────────────────────
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1
 ROOT="$(pwd)"
-mkdir -p logs
+PROJECT="$ROOT"
+source "$ROOT/scripts/lib.sh"
+mkdir -p "$PRIVATE/logs" && chmod 700 "$PRIVATE"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-LOG="logs/autopilot-$STAMP.log"
-SUMMARY="logs/latest-summary.txt"
+LOGS="private/logs"
+LOG="$LOGS/autopilot-$STAMP.log"
+SUMMARY="$LOGS/latest-summary.txt"
 exec > >(tee -a "$LOG") 2>&1
 
 RUN_EVAL=1
@@ -31,11 +34,6 @@ for a in "$@"; do [ "$a" = "--no-eval" ] && RUN_EVAL=0; done
 say()  { echo; echo "━━━ $* ━━━"; }
 note() { echo "$*" | tee -a "$SUMMARY"; }
 fail() { note "FAILED: $*"; note "Full log: $ROOT/$LOG"; echo; echo "Press Return to close."; read -r _; exit 1; }
-wait_for() {  # wait_for <seconds> <command...>
-  local n=$1; shift
-  for _ in $(seq 1 "$n"); do "$@" >/dev/null 2>&1 && return 0; sleep 1; done
-  return 1
-}
 
 note "Vidhyāsathi autopilot — $(date)"
 note "Project: $ROOT"
@@ -75,12 +73,11 @@ python -m pip install -q -r requirements.txt -r requirements-dev.txt || fail "pi
 note "Python: $(python --version 2>&1), packages installed"
 
 # ── 4. Qdrant ────────────────────────────────────────────────────────────────
-say "4/7  Qdrant knowledge base"
-docker start qdrant >/dev/null 2>&1 || docker run -d --name qdrant -p 6333:6333 \
-  -v "$ROOT/qdrant_storage_server:/qdrant/storage" qdrant/qdrant >/dev/null \
-  || fail "couldn't start the Qdrant container"
-wait_for 60 curl -s -m 2 http://localhost:6333/collections || fail "Qdrant didn't come up on port 6333"
-note "Qdrant: running"
+say "4/7  Private files + Qdrant knowledge base"
+PYTHON=python tidy_private || fail "couldn't move the knowledge base into private/"
+load_env
+start_qdrant || fail "Qdrant didn't come up on port 6333"
+note "Private files: in private/ (owner-only). Qdrant: running"
 export QDRANT_URL=http://localhost:6333
 
 # ── 5. Automated tests ───────────────────────────────────────────────────────
@@ -91,7 +88,7 @@ else
   echo "(Node isn't installed — UI tests will be skipped)"
 fi
 export VS_NODE_MODULES="$ROOT/node_modules"
-TESTLOG="logs/tests-$STAMP.log"
+TESTLOG="$LOGS/tests-$STAMP.log"
 python -m pytest -q -p no:cacheprovider --timeout=180 -rfE 2>&1 | tee "$TESTLOG" | tail -25
 TEST_RC=${PIPESTATUS[0]}
 TEST_LINE="$(grep -E '[0-9]+ (passed|failed)' "$LOG" | tail -1)"
@@ -104,10 +101,10 @@ PORT=8765
 lsof -ti tcp:$PORT 2>/dev/null | xargs kill 2>/dev/null
 sleep 1
 caffeinate -s python -m uvicorn app:app --host 127.0.0.1 --port $PORT \
-  > "logs/app-$STAMP.log" 2>&1 &
+  > "$LOGS/app-$STAMP.log" 2>&1 &
 APP_PID=$!
 trap 'kill $APP_PID 2>/dev/null' EXIT
-wait_for 120 curl -s -m 2 http://localhost:$PORT/api/health || fail "the app didn't start (see logs/app-$STAMP.log)"
+wait_for 120 curl -s -m 2 http://localhost:$PORT/api/health || fail "the app didn't start (see $LOGS/app-$STAMP.log)"
 echo "Warming up the model (first answer loads it into memory)…"
 python -u scripts/smoke_live.py http://localhost:$PORT
 SMOKE_RC=$?
@@ -119,7 +116,7 @@ say "7/7  Evaluation on your uploaded notes"
 if [ "$RUN_EVAL" = "1" ]; then
   python -u scripts/eval_real.py --n 20 --negatives 10
   EVAL_RC=$?
-  REPORT="$(ls -t eval/report-*.md 2>/dev/null | head -1)"
+  REPORT="$(ls -t private/eval/report-*.md 2>/dev/null | head -1)"
   if [ "$EVAL_RC" = "0" ] && [ -n "$REPORT" ]; then
     note "Evaluation: done — $ROOT/$REPORT"
     grep -E "^\| (Answer accuracy|Retrieval MRR|Beats the keyword)" "$REPORT" | tee -a "$SUMMARY"

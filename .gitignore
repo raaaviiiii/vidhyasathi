@@ -1,23 +1,27 @@
-.venv/
-__pycache__/
-*.pyc
-.env
-.DS_Store
-.pytest_cache/
+# ── PRIVATE: everything that belongs to you or your students ──────────────────
+# accounts, uploaded notes, knowledge base, OCR text, logs, evaluation reports, secrets.
+# Never committed, never shared, owner-only on disk (chmod 700).
+private/
 
-# local data — never commit (accounts, students' uploads, vector store, OCR cache)
+# old locations of the same files (moved into private/ automatically) — still ignored
+.env
 users.db
-data/uploads/
-data/docs/*
-!data/docs/.gitkeep
+users.db-*
+data/
 qdrant_storage/
 qdrant_storage_server/
 ocr_cache.json
 ocr_cost_log.csv
-# evaluation sets and reports quote your notes
 eval/
-node_modules/
+logs/
+.logs/
 .backup-before-update-*/
 .vs-update.bundle
-.logs/
-logs/
+
+# tooling
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store

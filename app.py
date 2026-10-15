@@ -8,7 +8,7 @@ Security model (the app is shared over a public tunnel):
   - Sign-up / sign-in return a session token. Every data endpoint requires
     `Authorization: Bearer <token>`; the server derives the student from it and
     IGNORES any `user` field a client sends.
-  - Each student's files live in data/uploads/<hash>/ and their chunks are tagged
+  - Each student's files live in private/uploads/<hash>/ and their chunks are tagged
     with their email, so they can only ever see, query or delete their own material.
   - GET /api/users is admin-only: set VS_ADMIN_EMAILS="you@x.com" before starting.
 """
@@ -43,8 +43,14 @@ from src.grade import grade
 from src.ingest import SUPPORTED, source_label
 from src.store import delete_doc, delete_legacy_source, delete_user, user_index, count_version
 
+from src import config as _config
+from src.layout import migrate as _migrate_layout
+
 BASE = Path(__file__).parent
-USERS_DB = BASE / "users.db"
+WEB_DIR = _config.WEB_DIR            # public: the page itself
+DATA_DIR = _config.PRIVATE_DIR       # private: accounts, uploads, knowledge base, logs
+USERS_DB = _config.USERS_DB
+_migrate_layout()                    # move files left over from the old flat layout into private/
 SESSION_DAYS = 30
 MAX_UPLOAD_MB = int(os.environ.get("VS_MAX_UPLOAD_MB", "50"))
 ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("VS_ADMIN_EMAILS", "").split(",")
@@ -375,7 +381,7 @@ def _doc_lock(email: str, name: str) -> threading.RLock:
 def _user_dir(email: str) -> Path:
     """Per-student upload folder, keyed by a short hash of the email."""
     tag = hashlib.sha256(email.encode()).hexdigest()[:16]
-    d = BASE / "data" / "uploads" / tag
+    d = DATA_DIR / "uploads" / tag
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -456,7 +462,7 @@ class DeleteMaterialReq(BaseModel):
 # ====================================================================== pages
 @app.get("/")
 def index():
-    return FileResponse(BASE / "index.html", headers={"Cache-Control": "no-cache"})
+    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/health")

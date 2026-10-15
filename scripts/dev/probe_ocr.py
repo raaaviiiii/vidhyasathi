@@ -3,7 +3,7 @@ import sys
 import fitz            # pymupdf
 import ollama
 
-PDF = sys.argv[1] if len(sys.argv) > 1 else "data/docs/Mod_1__1.pdf"
+PDF = sys.argv[1] if len(sys.argv) > 1 else "private/docs/Mod 1 .1.pdf"
 MODEL = "minicpm-v"
 
 doc = fitz.open(PDF)

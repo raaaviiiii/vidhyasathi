@@ -4,10 +4,10 @@ import pymupdf
 import anthropic
 from dotenv import load_dotenv
 
-load_dotenv()                          # reads ANTHROPIC_API_KEY from .env
+load_dotenv("private/.env"); load_dotenv()   # ANTHROPIC_API_KEY
 client = anthropic.Anthropic()
 
-PDF = sys.argv[1] if len(sys.argv) > 1 else "data/docs/Mod 1 .1.pdf"
+PDF = sys.argv[1] if len(sys.argv) > 1 else "private/docs/Mod 1 .1.pdf"
 png = pymupdf.open(PDF)[0].get_pixmap(dpi=200).tobytes("png")
 b64 = base64.standard_b64encode(png).decode()
 

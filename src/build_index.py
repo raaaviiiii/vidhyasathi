@@ -4,7 +4,7 @@
                              Identity is the exact file name, so notes.pdf and notes.docx
                              are two documents. The new version is written first and the
                              old one removed only after that succeeds.
-  build(owner=None)        — (re)seed one bucket from every document in data/docs/.
+  build(owner=None)        — (re)seed one bucket from every document in private/docs/.
                              Only that bucket is replaced; other students are untouched.
 
 CLI:  python -m src.build_index                 # seed the shared bucket
@@ -108,7 +108,7 @@ def ingest_file(path, user: str | None = None, doc: str | None = None) -> dict:
 def build(owner: str | None = None):
     docs = list_documents()
     if not docs:
-        print("No supported documents in data/docs/.")
+        print("No supported documents in private/docs/.")
         return
 
     print(f"Found {len(docs)} document(s):")

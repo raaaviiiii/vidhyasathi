@@ -1,7 +1,7 @@
 """Evaluation harness — measures the claims in the review deck instead of eyeballing.
 
     python -m src.eval make --user you@x.com            # draft a test set from YOUR notes
-    python -m src.eval run  --user you@x.com            # run it, write eval/report-*.md/.json
+    python -m src.eval run  --user you@x.com            # run it, write private/eval/report-*.md/.json
 
 `make` picks passages from the student's indexed material and has the model write one
 question per passage (so the passage that answers it is known), then adds off-material
@@ -30,10 +30,9 @@ from pathlib import Path
 from src import config
 from src.answer import (GROUND_CHECK, _words, _STOP, _retrieve, answer, ask_llm,
                         build_context, call_llm)
-from src.config import BASE_DIR, COLLECTION_NAME, RETRIEVE_CANDIDATES
+from src.config import COLLECTION_NAME, EVAL_DIR, RETRIEVE_CANDIDATES
 from src.store import get_client, user_filter
 
-EVAL_DIR = BASE_DIR / "eval"
 K = 10
 
 OFF_MATERIAL = [
@@ -441,15 +440,15 @@ def main(argv=None):
     mk.add_argument("--user", required=True, help="the student's sign-in email")
     mk.add_argument("--n", type=int, default=30, help="in-material questions (default 30)")
     mk.add_argument("--negatives", type=int, default=15, help="off-material questions (default 15)")
-    mk.add_argument("--out", help="output .jsonl (default eval/<user>.jsonl)")
+    mk.add_argument("--out", help="output .jsonl (default private/eval/<user>.jsonl)")
     rn = sub.add_parser("run", help="run a test set and write a report")
     rn.add_argument("--user", required=True)
-    rn.add_argument("--set", help="test set .jsonl (default eval/<user>.jsonl)")
+    rn.add_argument("--set", help="test set .jsonl (default private/eval/<user>.jsonl)")
     rn.add_argument("--no-judge", action="store_true", help="skip the LLM judge (faster)")
     a = ap.parse_args(argv)
 
     user = a.user.strip().lower()
-    EVAL_DIR.mkdir(exist_ok=True)
+    EVAL_DIR.mkdir(parents=True, exist_ok=True)
     default_set = EVAL_DIR / f"{re.sub(r'[^a-z0-9]+', '_', user)}.jsonl"
     if a.cmd == "make":
         items = make_set(user, a.n, a.negatives)
@@ -479,7 +478,7 @@ def main(argv=None):
     md = report_md(result)
     (EVAL_DIR / f"report-{stamp}.md").write_text(md)
     print("\n" + md)
-    print(f"Saved eval/report-{stamp}.md and .json")
+    print(f"Saved private/eval/report-{stamp}.md and .json")
 
 
 if __name__ == "__main__":

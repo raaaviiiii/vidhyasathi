@@ -2,9 +2,9 @@
 
     python scripts/eval_real.py [--n 20] [--negatives 10] [--keep-set]
 
-Copies every uploaded document (data/uploads/*/ and data/docs/) into a temporary
+Copies every uploaded document (private/uploads/*/ and private/docs/) into a temporary
 evaluation bucket, drafts a test set from it, runs the evaluation, writes
-eval/report-*.md, and deletes the temporary bucket again. Needs Qdrant + Ollama running.
+private/eval/report-*.md, and deletes the temporary bucket again. Needs Qdrant + Ollama running.
 """
 import argparse
 import json
@@ -19,13 +19,14 @@ from src import eval as ev                     # noqa: E402
 from src.build_index import ingest_file       # noqa: E402
 from src.ingest import SUPPORTED              # noqa: E402
 from src.store import delete_bucket           # noqa: E402
+from src.config import DOCS_DIR, UPLOADS_DIR  # noqa: E402
 
 BUCKET = "eval-bot@vidhyasathi.local"
 
 
 def documents():
     seen, out = set(), []
-    for folder in sorted((ROOT / "data" / "uploads").glob("*")) + [ROOT / "data" / "docs"]:
+    for folder in sorted(UPLOADS_DIR.glob("*")) + [DOCS_DIR]:
         if not folder.is_dir():
             continue
         for p in sorted(folder.iterdir()):
@@ -46,7 +47,7 @@ def main():
 
     docs = documents()
     if not docs:
-        print("No uploaded notes found in data/uploads/ or data/docs/ — upload notes in the app first.")
+        print("No uploaded notes found in private/uploads/ or private/docs/ — upload notes in the app first.")
         return 1
     print(f"Indexing {len(docs)} document(s) into a temporary evaluation bucket…")
     delete_bucket(BUCKET)
@@ -69,7 +70,7 @@ def main():
         (ev.EVAL_DIR / f"report-{stamp}.md").write_text(md)
         (ev.EVAL_DIR / f"report-{stamp}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         print("\n" + md)
-        print(f"Saved eval/report-{stamp}.md ({(time.time() - t0) / 60:.1f} min)")
+        print(f"Saved private/eval/report-{stamp}.md ({(time.time() - t0) / 60:.1f} min)")
         return 0
     finally:
         delete_bucket(BUCKET)

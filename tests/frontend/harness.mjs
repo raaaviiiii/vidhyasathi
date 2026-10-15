@@ -14,7 +14,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, '..', '..');
-export const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+export const HTML = fs.readFileSync(path.join(ROOT, 'web', 'index.html'), 'utf8');
 const MARKED_SRC = fs.readFileSync(
   path.join(path.dirname(require.resolve('marked')), 'marked.umd.js'), 'utf8');
 

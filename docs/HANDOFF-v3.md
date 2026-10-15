@@ -8,7 +8,7 @@ and Phase 2 (Ask for Help + evaluation harness) built and tested.
 - **Tests:** ~370 backend checks (pytest) + 179 UI checks (JSDOM), all passing.
   The live model is faked in tests; `scripts/smoke_live.py` checks the real stack on the Mac.
 - **QA history:** round 1 found ~65 bugs, round 2 ~45, round 3 (phase 2) ~33.
-  Reports are in `qa/reports/`; the intended behaviour the testers judged against is `qa/SPEC.md`.
+  Reports are in `docs/qa/reports/`; the intended behaviour the testers judged against is `docs/qa/SPEC.md`.
 
 ## 2. What changed (the big things)
 
@@ -55,13 +55,13 @@ and Phase 2 (Ask for Help + evaluation harness) built and tested.
 
 **Evaluation harness** (backs the deck's numbers)
 ```
-python -m src.eval make --user you@x.com      # drafts eval/<you>.jsonl from your notes
+python -m src.eval make --user you@x.com      # drafts private/eval/<you>.jsonl from your notes
 #  -> read it, fix/delete weak questions
-python -m src.eval run  --user you@x.com      # writes eval/report-*.md and .json
+python -m src.eval run  --user you@x.com      # writes private/eval/report-*.md and .json
 ```
 Reports MRR@10 / Recall@5 vs a BM25 keyword baseline, judged answer accuracy,
 honest-refusal rate, citation accuracy, latency, and recommended gate thresholds.
-`eval/` is git-ignored (it quotes your notes).
+`private/` is git-ignored (the eval files quote your notes).
 
 ## 4. Run
 

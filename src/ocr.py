@@ -13,12 +13,10 @@ from pathlib import Path
 from PIL import Image
 import numpy as np
 import anthropic
-from dotenv import load_dotenv
 
-from src.config import (OCR_TIERS, OCR_BLUR_FLOOR, OCR_MAX_TOKENS,
+from src.config import (OCR_TIERS, OCR_BLUR_FLOOR, OCR_MAX_TOKENS, DOCS_DIR,
                         OCR_CACHE_PATH, OCR_COST_LOG, OCR_EST_COST)
 
-load_dotenv()
 _client = None
 
 
@@ -47,6 +45,7 @@ def _load_cache():
 
 
 def _save_cache(c):
+    Path(OCR_CACHE_PATH).parent.mkdir(parents=True, exist_ok=True)
     Path(OCR_CACHE_PATH).write_text(json.dumps(c))
 
 
@@ -85,6 +84,7 @@ def _call(model, b64):
 
 
 def _log_cost(model):
+    Path(OCR_COST_LOG).parent.mkdir(parents=True, exist_ok=True)
     new = not Path(OCR_COST_LOG).exists()
     with open(OCR_COST_LOG, "a", newline="") as f:
         w = csv.writer(f)
@@ -148,7 +148,7 @@ def total_spend():
 if __name__ == "__main__":
     import sys, pymupdf
     from src.config import OCR_DPI
-    pdf = sys.argv[1] if len(sys.argv) > 1 else "data/docs/Mod 1 .1.pdf"
+    pdf = sys.argv[1] if len(sys.argv) > 1 else str(DOCS_DIR / "Mod 1 .1.pdf")
     page = int(sys.argv[2]) - 1 if len(sys.argv) > 2 else 0
     png = pymupdf.open(pdf)[page].get_pixmap(dpi=OCR_DPI).tobytes("png")
     print(f"OCR of {pdf} page {page+1}:\n")
