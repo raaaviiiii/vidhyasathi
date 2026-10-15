@@ -102,3 +102,23 @@ def test_cli_make_and_run_write_files(material, tmp_path, monkeypatch):
     assert len(sets) == 1 and len(sets[0].read_text().splitlines()) == 4
     ev.main(["run", "--user", A, "--no-judge"])
     assert list(tmp_path.glob("report-*.md")) and list(tmp_path.glob("report-*.json"))
+
+
+def test_eval_real_script_uses_a_temporary_bucket_and_cleans_up(fakes, tmp_path, monkeypatch):
+    """scripts/eval_real.py: indexes uploads into a throwaway bucket, writes a report,
+    and leaves no chunks behind (the student's own data is never touched)."""
+    import importlib.util, sys
+    from src.store import count
+    from tests.samples import NUMBER_THEORY
+    spec = importlib.util.spec_from_file_location("eval_real", "scripts/eval_real.py")
+    er = importlib.util.module_from_spec(spec); spec.loader.exec_module(er)
+    up = tmp_path / "data" / "uploads" / "abc"; up.mkdir(parents=True)
+    (up / "nt.txt").write_text("\n\n".join(NUMBER_THEORY * 2))
+    (up / "graphs.md").write_text("\n\n".join(GRAPHS * 2))
+    monkeypatch.setattr(er, "ROOT", tmp_path)
+    monkeypatch.setattr(ev, "EVAL_DIR", tmp_path / "eval")
+    fakes.llm.respond = _qa_writer
+    monkeypatch.setattr(sys, "argv", ["eval_real.py", "--n", "3", "--negatives", "3"])
+    assert er.main() == 0
+    assert list((tmp_path / "eval").glob("report-*.md"))
+    assert count(er.BUCKET) == 0, "temporary evaluation bucket was left behind"
