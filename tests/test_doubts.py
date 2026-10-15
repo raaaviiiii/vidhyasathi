@@ -231,3 +231,54 @@ def test_existing_database_is_migrated_so_ids_are_never_reused(app_client):
     con.close()
     assert new_id > 5, "a new account could inherit references to deleted id 5"
     assert me["email"] == "new@x.com"
+
+
+# ---------------------------------------------------------- who receives it, before sending
+def test_preview_shows_who_it_goes_to_before_sending(world):
+    c, t = world
+    r = c.post("/api/doubts/route", headers=H(t["stu"]),
+               json={"question": "Why is gcd computed by repeated division?"}).json()
+    assert r["suggested"]["name"] == "Meera Teacher"
+    assert r["suggested"]["subjects"].startswith("number theory")
+    assert [h["name"] for h in r["helpers"]][0] == "Meera Teacher"
+    assert {h["name"] for h in r["helpers"]} == {"Meera Teacher", "Charles Senior"}
+    assert all("email" not in h for h in r["helpers"]), "students never see helpers' emails"
+    assert all(doubts(c, t[k])["inbox"] == [] for k in ("maths", "chem", "admin")), \
+        "a preview must not send anything"
+
+
+def test_student_can_pick_a_different_helper_and_only_they_get_it(world):
+    c, t = world
+    helpers = c.post("/api/doubts/route", headers=H(t["stu"]),
+                     json={"question": "gcd question"}).json()["helpers"]
+    chem = next(h for h in helpers if h["name"] == "Charles Senior")
+    r = ask(c, t["stu"], "gcd question", helper_id=chem["id"]).json()
+    assert r["routed_to"] == "Charles Senior" and r["routed_subjects"].startswith("chemistry")
+    assert len(doubts(c, t["chem"])["inbox"]) == 1
+    assert doubts(c, t["maths"])["inbox"] == [], "a doubt goes to exactly one helper"
+    assert doubts(c, t["admin"])["inbox"] == [], "the owner only sees unassigned doubts"
+    mine = doubts(c, t["stu"])["mine"][0]
+    assert mine["helper_name"] == "Charles Senior" and mine["helper_subjects"].startswith("chemistry")
+
+
+def test_picking_someone_who_is_not_a_helper_is_refused(world):
+    c, t = world
+    me = c.get("/api/me", headers=H(t["stu"])).json()
+    bad_ids = [999999]
+    if isinstance(me.get("id"), int):
+        bad_ids.append(me["id"])
+    for bad in bad_ids:
+        r = ask(c, t["stu"], "gcd question", helper_id=bad)
+        assert r.status_code == 400
+    assert doubts(c, t["stu"])["mine"] == []
+
+
+def test_preview_with_no_helpers_says_the_owner_gets_it(app_client, monkeypatch):
+    monkeypatch.setattr(app_module, "ADMIN_EMAILS", {ADMIN})
+    c = app_client
+    signup(c, ADMIN)
+    stu = signup(c, "s@x.com")
+    r = c.post("/api/doubts/route", headers=H(stu), json={"question": "anything"}).json()
+    assert r["suggested"] is None and r["helpers"] == [] and r["fallback"] == "the app owner"
+    r = ask(c, stu, "anything").json()
+    assert r["routed_to"] is None and r["fallback"] == "the app owner"

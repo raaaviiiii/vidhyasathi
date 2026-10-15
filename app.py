@@ -777,6 +777,18 @@ class DoubtReq(BaseModel):
     decision: str = Field("", max_length=40)
     sources: list[str] = Field(default_factory=list, max_length=20)
     note: str = Field("", max_length=2000)          # anything the student adds
+    helper_id: int | None = Field(None, ge=1, le=2 ** 63 - 1)   # chosen helper (optional)
+    _q = field_validator("question")(_strip_nonempty)
+
+    @field_validator("sources")
+    @classmethod
+    def _src(cls, v):
+        return [str(x)[:200] for x in v if str(x).strip()]
+
+
+class RoutePreviewReq(BaseModel):
+    question: str = Field(max_length=4000)
+    sources: list[str] = Field(default_factory=list, max_length=20)
     _q = field_validator("question")(_strip_nonempty)
 
     @field_validator("sources")
@@ -817,13 +829,15 @@ def _doubt_view(row: dict, viewer: Student) -> dict:
     out["sources"] = json.loads(row["sources"] or "[]")
     out["helper_name"] = row.get("helper_name") or row.get("answered_name") or (
         "a helper (account removed)" if row.get("status") == "answered" else None)
+    out["helper_subjects"] = (row.get("helper_subjects") or "") if row.get("helper_id") else ""
     out["mine"] = row["student_id"] == viewer.id
     if not out["mine"]:
         out["student_name"] = _first(row.get("student_name"))
     return out
 
 
-_DOUBT_SELECT = ("SELECT d.*, h.name AS helper_name, s.name AS student_name FROM doubts d "
+_DOUBT_SELECT = ("SELECT d.*, h.name AS helper_name, h.expertise AS helper_subjects, "
+                 "s.name AS student_name FROM doubts d "
                  "LEFT JOIN users h ON h.id = d.helper_id LEFT JOIN users s ON s.id = d.student_id ")
 
 
@@ -832,20 +846,54 @@ def _rows(c, sql, args=()):
     return [dict(r) for r in c.execute(sql, args).fetchall()]
 
 
+def _helpers_for(c, student_id: int) -> list[dict]:
+    """Everyone a student could send a doubt to (never themselves)."""
+    return _rows(c, "SELECT u.id, u.name, u.email, u.expertise, "
+                    "(SELECT COUNT(*) FROM doubts d WHERE d.helper_id=u.id AND d.status='open') "
+                    "AS open_count FROM users u WHERE u.role='helper' AND u.id<>? ORDER BY u.name",
+                 (student_id,))
+
+
+def _helper_card(h: dict | None) -> dict | None:
+    """What a student may see of a helper: name and subjects, never the email."""
+    if not h:
+        return None
+    return {"id": h["id"], "name": h["name"], "subjects": (h.get("expertise") or "").strip(),
+            "open": h.get("open_count", 0)}
+
+
+@app.post("/api/doubts/route")
+@guarded
+def preview_route(r: RoutePreviewReq, u: Student = Depends(current_user)):
+    """Who a doubt WOULD go to, before it is sent: the best-matched helper plus everyone
+    else the student may choose instead. A doubt always goes to exactly one person."""
+    with closing(_db()) as c:
+        helpers = _helpers_for(c, u.id)
+    best = route_doubt(r.question, r.sources, helpers)
+    others = [h for h in helpers if not best or h["id"] != best["id"]]
+    return {"ok": True, "suggested": _helper_card(best),
+            "helpers": [_helper_card(h) for h in ([best] if best else []) + others],
+            "fallback": None if helpers else "the app owner"}
+
+
 @app.post("/api/doubts")
 @guarded
 def ask_helper(r: DoubtReq, u: Student = Depends(current_user)):
-    """Send a doubt to the best-matched helper."""
+    """Send a doubt to ONE helper: the one the student picked, or the best match.
+    With no helpers at all it waits for the app owner."""
     with closing(_db()) as c:
         open_n = c.execute("SELECT COUNT(*) FROM doubts WHERE student_id=? AND status='open'",
                            (u.id,)).fetchone()[0]
         if open_n >= MAX_OPEN_DOUBTS:
             return _err(429, f"You already have {MAX_OPEN_DOUBTS} open doubts. "
                              "Wait for replies or withdraw some.")
-        helpers = _rows(c, "SELECT u.id, u.name, u.email, u.expertise, "
-                           "(SELECT COUNT(*) FROM doubts d WHERE d.helper_id=u.id AND d.status='open') "
-                           "AS open_count FROM users u WHERE u.role='helper' AND u.id<>?", (u.id,))
-    helper = route_doubt(r.question, r.sources, helpers)
+        helpers = _helpers_for(c, u.id)
+    if r.helper_id is not None:
+        helper = next((h for h in helpers if h["id"] == r.helper_id), None)
+        if not helper:
+            return _err(400, "That person isn't a helper you can send doubts to.")
+    else:
+        helper = route_doubt(r.question, r.sources, helpers)
     with closing(_db()) as c:
         c.isolation_level = None
         c.execute("BEGIN IMMEDIATE")               # count + insert can't interleave
@@ -862,7 +910,9 @@ def ask_helper(r: DoubtReq, u: Student = Depends(current_user)):
                              "Wait for replies or withdraw some.")
         row = _rows(c, _DOUBT_SELECT + "WHERE d.id=?", (cur.lastrowid,))[0]
     return {"ok": True, "doubt": _doubt_view(row, u),
-            "routed_to": helper["name"] if helper else None}
+            "routed_to": helper["name"] if helper else None,
+            "routed_subjects": (helper.get("expertise") or "") if helper else "",
+            "fallback": None if helper else "the app owner"}
 
 
 @app.get("/api/doubts")

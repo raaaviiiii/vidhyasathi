@@ -889,24 +889,43 @@ function openAskHelper(q,r,btn,entry){
   <div class="sub">A teacher or senior who knows this subject will reply. Their answer is added to your material, so next time Vidhy\u0101sathi can answer it from your notes.</div>
   <label class="dsec" for="hq">YOUR QUESTION</label><textarea id="hq" class="sarea" maxlength="4000"></textarea>
   <label class="dsec" for="hn">ANYTHING ELSE THEY SHOULD KNOW (OPTIONAL)</label><textarea id="hn" class="sarea" maxlength="2000" placeholder="e.g. which part confuses you"></textarea>
+  <label class="dsec" for="hto">SENDS TO</label><div id="hroute" class="small" style="color:var(--t2)">finding the right helper\u2026</div>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn on" id="hsend">Send to a helper</button></div>
   <div id="hmsg" class="small" style="color:var(--t3);margin-top:8px"></div>`,baseNav);
   document.getElementById('hq').value=q;
   const send=document.getElementById('hsend');
+  const srcList=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&s.source).map(s=>s.loc?s.source+' \u00b7 '+s.loc:s.source))];
+  let chosen=null;                                   // helper id, or null = the app owner
+  const hr=document.getElementById('hroute');
+  const label=h=>h.name+(h.subjects?' \u2014 '+h.subjects:'');
+  post('/api/doubts/route',{question:q,sources:srcList}).then(rt=>{
+    if(!hr.isConnected)return;
+    const list=(Array.isArray(rt.helpers)?rt.helpers:[]).filter(h=>h&&typeof h.id==='number'&&typeof h.name==='string');
+    if(!list.length){hr.textContent='No helpers are set up yet, so this goes to the app owner. Only they will see it.';send.textContent='Send to the app owner';return;}
+    const sel=el('select','sinput');sel.id='hto';sel.setAttribute('aria-label','Send to');
+    list.forEach((h,i)=>{const o=el('option',null,label(h)+(i===0&&rt.suggested&&rt.suggested.id===h.id?'  (best match)':''));o.value=String(h.id);sel.append(o);});
+    chosen=list[0].id;
+    const who=el('div','small','Only this person will see your question.');who.style.color='var(--t3)';who.style.marginTop='4px';
+    const upd=()=>{chosen=Number(sel.value);const h=list.find(x=>x.id===chosen);send.textContent='Send to '+(h?h.name:'helper');};
+    sel.addEventListener('change',upd);upd();
+    hr.replaceChildren(sel,who);
+  }).catch(e=>{if(hr.isConnected&&e.status!==401)hr.textContent='It will go to the best-matched helper.';});
   send.addEventListener('click',async()=>{
     if(send.disabled)return;
     const qq=document.getElementById('hq').value.trim(),note=document.getElementById('hn').value.trim(),m=document.getElementById('hmsg');
     if(!qq){m.textContent='Write your question first.';return;}
     send.disabled=true;if(btn)btn.dataset.sending='1';m.textContent='Sending\u2026';
-    const sources=[...new Set((Array.isArray(r.sources)?r.sources:[]).filter(s=>s&&s.source).map(s=>s.loc?s.source+' \u00b7 '+s.loc:s.source))];
+    const sources=srcList;
     const attempt=[...String(r.answer||'')].slice(0,7990).join('');     // whole characters only
     const stillOpen=()=>send.isConnected&&document.getElementById('overlay').classList.contains('show');
-    try{const res=await post('/api/doubts',{question:qq,attempt,decision:String(r.decision||''),sources,note});
-      const who=res.routed_to||'a helper';
+    try{const body={question:qq,attempt,decision:String(r.decision||''),sources,note};
+      if(typeof chosen==='number')body.helper_id=chosen;
+      const res=await post('/api/doubts',body);
+      const who=res.routed_to||'the app owner';
       if(entry)entry.helpSent=who;
       if(btn){btn.disabled=true;btn.textContent='\u2713 Sent to '+who;}
       if(stillOpen()){modalOpener=document.getElementById('input');closeModal();}
-      toast(res.routed_to?('Sent to '+res.routed_to+' \u2014 their reply will appear in My doubts.'):'Sent \u2014 the next available helper will reply in My doubts.');
+      toast('Sent only to '+who+' \u2014 the reply will appear in My doubts.');
       refreshDoubts();}
     catch(e){
       if(e.status===401)return;
@@ -924,7 +943,7 @@ async function openDoubts(){
   if(!doubtsCache.mine.length){const n=el('div','small','No doubts yet. When an answer is tentative or not in your notes, use \u201cAsk a helper\u201d.');n.style.color='var(--t3)';box.replaceChildren(n);return;}
   box.replaceChildren(...doubtsCache.mine.map(d=>{
     const c=el('div','doubt');c.append(el('div','dq',d.question));
-    const meta=el('div','dm');meta.append(statusChip(d),el('span',null,d.status==='closed'?'you withdrew this':(d.helper_name?('\u2192 '+d.helper_name):'\u2192 waiting for a helper')),el('span',null,when(d.created)));c.append(meta);
+    const meta=el('div','dm');meta.append(statusChip(d),el('span',null,d.status==='closed'?'you withdrew this':(d.helper_name?('\u2192 sent to '+d.helper_name+(d.helper_subjects?' ('+d.helper_subjects+')':'')):'\u2192 waiting for the app owner')),el('span',null,when(d.created)));c.append(meta);
     if(d.status==='answered'){
       const a=el('div','da');renderMd(a,d.answer||'');c.append(a);
       const fb=el('div','dm');

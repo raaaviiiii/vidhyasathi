@@ -40,7 +40,7 @@ test('sending a doubt posts the question, the bot attempt, decision and sources,
     decision: 'answer_uncertain', sources: ['Notes · p1'], note: 'I missed the lecture' });
   assert.equal(authOf(c), AUTH);
   assert.ok(!env.$('#overlay').classList.contains('show'));
-  assert.match(env.$('#toast').textContent, /Sent to Meera Teacher/);
+  assert.match(env.$('#toast').textContent, /Sent only to Meera Teacher/);
   assert.match(env.lastBot().querySelector('.askhelp').textContent, /Sent to Meera Teacher/);
   assert.ok(env.lastBot().querySelector('.askhelp').disabled);
 });
@@ -151,4 +151,36 @@ test('Settings: helpers see "My helper subjects"; the owner sees helper manageme
 test('no doubts requests when signed out', async () => {
   const env = boot(); await env.settle();
   assert.equal(env.callsTo('/api/doubts').length, 0);
+});
+
+test('the ask box shows who the doubt goes to before sending, and lets the student pick', async () => {
+  const route = { ok: true, suggested: { id: 4, name: 'Meera Teacher', subjects: 'number theory', open: 0 },
+    helpers: [{ id: 4, name: 'Meera Teacher', subjects: 'number theory', open: 0 },
+              { id: 9, name: '<b>Charles</b>', subjects: 'chemistry', open: 1 }], fallback: null };
+  const env = boot({ storage: USER, routes: { '/api/answer': tentative, '/api/doubts/route': route,
+    '/api/doubts': (b, call) => call.method === 'POST' ? { ok: true, routed_to: 'Charles', doubt: doubt() }
+      : { ok: true, mine: [], inbox: [], role: 'student', is_helper: false, is_admin: false } } });
+  await env.ask('why is r less than b?');
+  env.click(env.lastBot().querySelector('.askhelp')); await env.settle();
+  const sel = env.$('#hto');
+  assert.ok(sel, 'a recipient picker is shown');
+  assert.match(sel.options[0].textContent, /Meera Teacher — number theory\s+\(best match\)/);
+  assert.equal(sel.querySelector('b'), null, 'names are text, never HTML');
+  assert.match(env.$('#hroute').textContent, /Only this person will see your question/);
+  assert.equal(env.$('#hsend').textContent, 'Send to Meera Teacher');
+  sel.value = '9'; sel.dispatchEvent(new env.window.Event('change')); await env.settle();
+  assert.equal(env.$('#hsend').textContent, 'Send to <b>Charles</b>');
+  env.click('#hsend'); await env.settle();
+  const c = env.calls.filter(x => x.path === '/api/doubts' && x.method === 'POST')[0];
+  assert.equal(c.body.helper_id, 9);
+  assert.match(env.$('#toast').textContent, /Sent only to Charles/);
+});
+
+test('with no helpers set up, the box says the app owner gets it', async () => {
+  const env = boot({ storage: USER, routes: { '/api/answer': tentative,
+    '/api/doubts/route': { ok: true, suggested: null, helpers: [], fallback: 'the app owner' } } });
+  await env.ask('why is r less than b?');
+  env.click(env.lastBot().querySelector('.askhelp')); await env.settle();
+  assert.match(env.$('#hroute').textContent, /goes to the app owner/);
+  assert.equal(env.$('#hsend').textContent, 'Send to the app owner');
 });
