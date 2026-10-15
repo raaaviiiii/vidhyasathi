@@ -1,11 +1,13 @@
 """Runs the JSDOM front-end suite (tests/frontend/*.test.mjs) from pytest.
 
-Requires Node >= 22 and jsdom + marked@12 installed under NODE_PATH
-(default /tmp/node_modules:  npm install --prefix /tmp jsdom marked@12).
+Requires Node >= 22 and the dev packages:  npm install   (in the project root;
+reads package.json). Without Node the UI suite is skipped, not failed.
 A non-zero exit means at least one UI test failed -> see the printed TAP output.
 """
 import os
 import shutil
+
+import pytest
 import subprocess
 from pathlib import Path
 
@@ -14,7 +16,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def test_frontend_suite():
     node = shutil.which("node")
-    assert node, "node is not installed"
+    if not node:
+        pytest.skip("Node isn't installed — UI tests skipped (install Node 22+ and run: npm install)")
     env = dict(os.environ)
     extra = os.environ.get("VS_NODE_MODULES", "/tmp/node_modules")
     env["NODE_PATH"] = os.pathsep.join(p for p in (extra, env.get("NODE_PATH", "")) if p)

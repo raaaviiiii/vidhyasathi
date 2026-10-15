@@ -1,0 +1,7 @@
+{
+  "name": "vidhyasathi-ui-tests",
+  "private": true,
+  "description": "Dev-only: packages for the JSDOM UI test suite (tests/frontend). The app itself needs no Node.",
+  "scripts": { "test:ui": "node --test tests/frontend/" },
+  "devDependencies": { "jsdom": "^26.0.0", "marked": "12.0.0" }
+}
