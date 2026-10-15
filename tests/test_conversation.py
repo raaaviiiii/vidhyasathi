@@ -410,3 +410,12 @@ def test_practice_set_on_that_follows_the_conversation(fakes, app_client, index_
                json={"topic": "give questions based on that", "n": 2, "history": hist}).json()
     assert r["grounded"], r
     assert "Euclidean" in r["resolved_topic"]
+
+
+
+def test_overview_of_both_materials_walks_everything(fakes, index_text):
+    for label, paras in DECKS.items():
+        index_text(A, label, paras)
+    r = answer("see both the materials, give an overview of the topics there", user=A)
+    assert r["decision"] == "answer", r
+    assert {s["source"] for s in r["sources"]} == set(DECKS)

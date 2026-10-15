@@ -433,14 +433,28 @@ def _material_lookup(question: str, mode: str, history: list[dict] | None,
                 return (hits, 1.0, f"whole document: {', '.join(docs)}", build_context(hits),
                         True, True)
         if not topic or docs:
-            # whole material: grounded iff there is material
+            # everything the student has: walk through all their documents
+            labels = sorted(l for l in user_sources(user) if l != converse.HELPER_SOURCE)
+            hits = _whole_documents(labels, user) if labels else []
+            if hits:
+                return hits, 1.0, "whole material", build_context(hits), True, True
             hits, top_score, label = _retrieve(question, user=user, broad=True)
             return hits, top_score, label, build_context(hits), bool(hits), True
         # a broad ask ABOUT a topic ("summarise quantum mechanics"): the topic itself
         # has to be in the material, exactly like a pointed question
         hits, top_score, label = _retrieve(topic, user=user, broad=True)
         context = build_context(hits)
-        return hits, top_score, label, context, _gate(topic, context, top_score), True
+        if _gate(topic, context, top_score):
+            return hits, top_score, label, context, True, True
+        # leftover words that all occur in the notes are framing, not a missing topic
+        # ("see both the materials ... there"): give the overview of everything
+        vocab = converse.vocabulary(user)
+        if vocab and all(w in vocab for w in topic.split()):
+            labels = sorted(l for l in user_sources(user) if l != converse.HELPER_SOURCE)
+            whole = _whole_documents(labels, user)
+            if whole:
+                return whole, 1.0, "whole material", build_context(whole), True, True
+        return hits, top_score, label, context, False, True
 
     hits, top_score, label, context, ok = _gate_lookup(question, user)
     if ok:

@@ -261,11 +261,13 @@ def test_broad_ask_with_no_material_refuses_without_llm(fakes, index_text):
     assert fakes.llm.calls == []
 
 
-def test_broad_ask_large_kb_keeps_broad_top_k_chunks(fakes, index_text):
+def test_overview_of_everything_reads_all_the_material_within_budget(fakes, index_text):
     _ix_filler(index_text, A, 40)
     r = answer("Give me an overview of everything in my notes", user=A)
     assert fakes.llm.count("overview") == 1
-    assert len(r["sources"]) == config.BROAD_TOP_K
+    assert r["mode"] == "whole material" and len(r["sources"]) > config.BROAD_TOP_K
+    (_, msgs), = [c for c in fakes.llm.calls if c[0] == "overview"]
+    assert len(msgs[-1]["content"]) < 20000, "must stay inside the model's context window"
 
 
 def test_broad_ask_about_off_material_topic_refuses(fakes, index_text):

@@ -17,6 +17,9 @@ STOP = {
     "bullet", "bullets", "point", "points", "form", "format", "way", "table", "words",
     "tomorrow", "tomorrows", "today", "tonight", "exam", "exams", "test", "tests", "quiz",
     "question", "questions", "based", "mcq", "mcqs", "generate", "set", "sets", "practise",
+    # pointing / looking words: "see both the materials", "refer to", "go through"
+    "see", "look", "check", "refer", "referring", "through", "both", "there", "here",
+    "materials", "available", "uploaded", "have", "has", "had", "got", "provided",
     "revision", "revise", "study", "studying", "prep", "before", "upcoming", "next",
     # how much / how it should be explained, never the topic
     "each", "detail", "details", "detailed", "depth", "fully", "properly", "thoroughly",
