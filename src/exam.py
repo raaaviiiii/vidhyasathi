@@ -85,13 +85,22 @@ def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
                 "top_score": 0.0, "mode": "", "sources": [],
                 "error": "Ask for at least one question on a topic."}
     n = min(n, MAX_N)
-    from src.converse import fix_spelling
+    from src.converse import fix_spelling, topic_words
+    from src.answer import _match_documents, _broad_topic, _whole_documents, _words
     topic_q = fix_spelling(topic, user)               # "osimodel" -> "osi model"
-    hits, top_score, mode_label = _retrieve(topic_q, user=user)
-    # the most on-topic chunks (small-KB hits arrive in document order, not by score)
-    hits = sorted(hits, key=lambda h: h["score"], reverse=True)[:TOP_K_GEN]
-    context = build_context(hits)
-    grounded = _gate(topic_q, context, top_score)
+    # "questions on the introduction" / "module 2": questions from that document
+    docs = _match_documents(topic_q, _broad_topic(topic_q), user)
+    doc_words = {w for d in docs for w in _words(d)}
+    if docs and not (topic_words(topic_q) - doc_words):
+        hits = _whole_documents(docs, user, budget=9000)
+        top_score, mode_label = 1.0, f"whole document: {', '.join(docs)}"
+        context, grounded = build_context(hits), bool(hits)
+    else:
+        hits, top_score, mode_label = _retrieve(topic_q, user=user, source=docs or None)
+        # the most on-topic chunks (small-KB hits arrive in document order, not by score)
+        hits = sorted(hits, key=lambda h: h["score"], reverse=True)[:TOP_K_GEN]
+        context = build_context(hits)
+        grounded = _gate(topic_q, context, top_score)
  
     sources = []
     for h in hits:

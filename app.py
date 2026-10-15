@@ -411,6 +411,7 @@ class AnswerReq(BaseModel):
 class ExamReq(BaseModel):
     topic: str = Field(max_length=500)
     n: int = Field(5, ge=1, le=EXAM_MAX_N)
+    history: list[HistoryItem] = Field(default_factory=list, max_length=40)
     _t = field_validator("topic")(_strip_nonempty)
 
 
@@ -633,7 +634,11 @@ def api_answer(r: AnswerReq, u: Student = Depends(current_user)):
 @app.post("/api/exam")
 @guarded
 def api_exam(r: ExamReq, u: Student = Depends(current_user)):
-    return JSONResponse(clean(generate(r.topic, r.n, user=u.email)))
+    from src.answer import resolve_topic
+    topic = resolve_topic(r.topic, [h.model_dump() for h in r.history], u.email)
+    res = generate(topic, r.n, user=u.email)
+    res["resolved_topic"] = topic if topic != r.topic else None
+    return JSONResponse(clean(res))
 
 
 @app.post("/api/grade")

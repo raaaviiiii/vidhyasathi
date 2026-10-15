@@ -389,3 +389,24 @@ def test_practice_and_grading_also_survive_typos(fakes, index_text):
     from src.exam import generate
     index_text(A, "Network Models", OSI)
     assert generate("the osimodel", n=2, user=A)["grounded"]
+
+
+# ------------------------------------------------------------ practice sets in a chat
+def test_practice_set_on_a_named_document_uses_that_document(fakes, index_text):
+    from src.exam import generate
+    for label, paras in DECKS.items():
+        index_text(A, label, paras)
+    r = generate("based on introduction", n=2, user=A)
+    assert r["grounded"] and r["mode"].startswith("whole document: 1. INTRODUCTION")
+
+
+def test_practice_set_on_that_follows_the_conversation(fakes, app_client, index_text):
+    c = app_client
+    tok = c.post("/api/signup", json={"name": "Asha", "email": "asha@x.com", "password": "passw0rd"}).json()["token"]
+    index_text("asha@x.com", "Number Theory", NUMBER_THEORY)
+    hist = EUCLID_TURN
+    _script_rewrite(fakes, "Give questions on the Euclidean algorithm that computes the gcd by repeated division")
+    r = c.post("/api/exam", headers={"Authorization": f"Bearer {tok}"},
+               json={"topic": "give questions based on that", "n": 2, "history": hist}).json()
+    assert r["grounded"], r
+    assert "Euclidean" in r["resolved_topic"]

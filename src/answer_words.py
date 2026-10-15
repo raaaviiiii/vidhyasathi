@@ -16,6 +16,7 @@ STOP = {
     "need", "like", "make", "write", "prepare", "create", "show", "so", "understand",
     "bullet", "bullets", "point", "points", "form", "format", "way", "table", "words",
     "tomorrow", "tomorrows", "today", "tonight", "exam", "exams", "test", "tests", "quiz",
+    "question", "questions", "based", "mcq", "mcqs", "generate", "set", "sets", "practise",
     "revision", "revise", "study", "studying", "prep", "before", "upcoming", "next",
     # how much / how it should be explained, never the topic
     "each", "detail", "details", "detailed", "depth", "fully", "properly", "thoroughly",

@@ -483,6 +483,17 @@ def _chat(question: str, history: list[dict], user: str | None, hint: str = "") 
     return _reply(raw, "chat")
 
 
+def resolve_topic(topic: str, history: list[dict] | None, user: str | None) -> str:
+    """A practice-set request in the flow of a chat: "give questions based on that" ->
+    the topic the conversation was about; typos fixed against the notes."""
+    hist = _clean_history(history)
+    t = (topic or "").strip()
+    if hist and converse.needs_context(t):
+        q = _resolve(t, hist)
+        t = converse.last_topic(hist) if q == converse.CHAT else q
+    return converse.fix_spelling(t, user) or topic
+
+
 _DETAIL_ASK = ("detail", "each", "every", "all the", "everything", "fully", "thorough",
                "in depth", "elaborate", "whole")
 

@@ -675,7 +675,7 @@ function answerNode(r,q,entry){
   return d;
 }
 function examNode(r){
-  const d=msg('bot','PRACTICE SET · '+(r.topic||''));
+  const d=msg('bot','PRACTICE SET · '+(r.resolved_topic||r.topic||''));
   const b=el('div','bubble');
   if(r.error){d.classList.add('refuse');b.textContent=r.error;}
   else if(!r.grounded){d.classList.add('refuse');b.textContent="I don't have that in the material — I can't set questions on a topic that isn't in your notes.";}
@@ -708,10 +708,10 @@ async function send(){
   ripple();loader();
   try{
     if(reqMode==='exam'){
-      const r=await post('/api/exam',{topic:q,n:5});
+      const r=await post('/api/exam',{topic:q,n:5,history:history.slice(-HISTORY_TURNS)});
       if(gen!==chatGen)return; renderExam(r);
       if(!r.error&&r.grounded&&Array.isArray(r.items)&&r.items.length)
-        remember('Make practice questions on '+q,(r.items||[]).filter(it=>it&&typeof it==='object').map((it,i)=>`Q${i+1}. ${it.q}\nA: ${it.a}`).join('\n'));
+        remember('Make practice questions on '+(r.resolved_topic||q),(r.items||[]).filter(it=>it&&typeof it==='object').map((it,i)=>`Q${i+1}. ${it.q}\nA: ${it.a}`).join('\n'));
     }else{
       const web=document.getElementById('webToggle').classList.contains('on');
       const r=await post('/api/answer',{question:q,mode:reqMode,web,history:history.slice(-HISTORY_TURNS)});
