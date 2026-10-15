@@ -41,6 +41,11 @@ tidy_private() {
 
 # Start the Qdrant container (a new one keeps its data in private/qdrant).
 start_qdrant() {
+  # A Qdrant is already answering on 6333 (e.g. a container with another name that
+  # already holds your knowledge base) — use it and don't start a second one.
+  if curl -s -m 2 http://localhost:6333/collections >/dev/null 2>&1; then
+    return 0
+  fi
   local src
   src="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/qdrant/storage"}}{{.Source}}{{end}}{{end}}' qdrant 2>/dev/null)"
   # Only a container bound to the OLD project folder is recreated: that folder was just
