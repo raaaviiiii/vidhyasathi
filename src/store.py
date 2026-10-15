@@ -222,3 +222,40 @@ def user_sources(user):
 def user_docs(user):
     """Distinct document file names in a bucket (to flag which uploads are live)."""
     return _scroll_field(user, "doc")
+
+
+def user_index(user):
+    """(document file names, labels of pre-versioning chunks that have no `doc`)."""
+    client = get_client()
+    docs, legacy = set(), set()
+    if not client.collection_exists(COLLECTION_NAME):
+        return docs, legacy
+    offset = None
+    while True:
+        pts, offset = client.scroll(
+            collection_name=COLLECTION_NAME, scroll_filter=user_filter(user),
+            with_payload=["doc", "source"], with_vectors=False, limit=512, offset=offset)
+        for p in pts:
+            pl = p.payload or {}
+            if pl.get("doc"):
+                docs.add(pl["doc"])
+            elif pl.get("source"):
+                legacy.add(pl["source"])
+        if offset is None:
+            break
+    return docs, legacy
+
+
+def delete_legacy_source(user, source):
+    """Remove chunks written before documents had a `doc` field, by their label."""
+    _delete(Filter(must=[_user_cond(user), _source_cond(source),
+                         IsEmptyCondition(is_empty=PayloadField(key="doc"))]))
+
+
+def count_version(user, doc, ver):
+    client = get_client()
+    if not client.collection_exists(COLLECTION_NAME):
+        return 0
+    return client.count(collection_name=COLLECTION_NAME, exact=True,
+                        count_filter=user_filter(user, _doc_cond(doc),
+                                                 FieldCondition(key="ver", match=MatchValue(value=ver)))).count

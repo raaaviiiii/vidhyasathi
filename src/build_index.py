@@ -18,14 +18,21 @@ from src.ingest import (list_documents, load_document, source_label,
 from src.chunk import chunk_records
 from src.embed import embed_texts
 from src.errors import IngestError
-from src.store import upsert_chunks, count, close, delete_bucket, _delete, user_filter
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from src.store import upsert_chunks, count, close, _delete, user_filter, _user_cond
+from qdrant_client.models import (FieldCondition, Filter, IsEmptyCondition, MatchValue,
+                                  PayloadField)
 
 
-def _drop_other_versions(user, doc, keep_ver):
-    from src.store import _user_cond, _doc_cond
+def _drop_other_versions(user, doc, keep_ver, source=None):
+    """Retire every other version of this document — including chunks written before
+    documents carried a `doc` field (matched by their label)."""
+    from src.store import _doc_cond
     _delete(Filter(must=[_user_cond(user), _doc_cond(doc)],
                    must_not=[FieldCondition(key="ver", match=MatchValue(value=keep_ver))]))
+    if source:
+        _delete(Filter(must=[_user_cond(user),
+                             FieldCondition(key="source", match=MatchValue(value=source)),
+                             IsEmptyCondition(is_empty=PayloadField(key="doc"))]))
 
 
 def _drop_version(user, doc, ver):
@@ -69,9 +76,14 @@ def ingest_file(path, user: str | None = None, doc: str | None = None) -> dict:
     except Exception:
         _drop_version(user, doc, ver)        # no half-written version left behind
         raise
-    _drop_other_versions(user, doc, ver)     # only now retire the old copy
+    try:
+        _drop_other_versions(user, doc, ver, source=src)   # only now retire the old copy
+    except Exception:
+        _drop_version(user, doc, ver)        # never leave two live versions
+        raise
     n_ocr = sum(1 for c in chunks if c.get("ocr"))
-    return {**base, "ok": True, "chunks": len(chunks), "ocr": n_ocr, "warnings": warnings}
+    return {**base, "ok": True, "chunks": len(chunks), "ocr": n_ocr, "warnings": warnings,
+            "ver": ver}
 
 
 def build(owner: str | None = None):
@@ -102,12 +114,19 @@ def build(owner: str | None = None):
     total = sum(len(c) for _, c in per_doc)
     print(f"\nTotal chunks: {total}")
     print("Embedding all chunks ...")
-    delete_bucket(owner)                       # replace ONLY this bucket
+    # Embed everything first, write the new version, and only then retire the old
+    # bucket — a crash midway leaves the previous knowledge base intact.
+    embedded = [(name, chunks, embed_texts([c["text"] for c in chunks]))
+                for name, chunks in per_doc if chunks]
     ver = uuid.uuid4().hex
-    for name, chunks in per_doc:
-        if chunks:
-            vectors = embed_texts([c["text"] for c in chunks])
+    try:
+        for name, chunks, vectors in embedded:
             upsert_chunks(chunks, vectors, user=owner, doc=name, ver=ver)
+    except Exception:
+        _delete(user_filter(owner, FieldCondition(key="ver", match=MatchValue(value=ver))))
+        raise
+    _delete(Filter(must=[_user_cond(owner)],          # replace ONLY this bucket
+                   must_not=[FieldCondition(key="ver", match=MatchValue(value=ver))]))
     who = f" (owner: {owner})" if owner else " (shared bucket)"
     print(f"Stored {count(owner)} chunks from {len(per_doc)} document(s) in the KB{who}.")
     close()

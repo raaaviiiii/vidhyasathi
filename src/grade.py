@@ -50,21 +50,27 @@ GRADE_PROMPT = (
 )
  
  
-_SCALE = r"(?:5|10|20|25|50|100)"
-_MARK_LINE = re.compile(
-    r"(?im)^.*(?:"
-    r"^\s*(?:score|marks?|grade|rating|result)\s*[:=\-]"           # "Score: ..."
-    r"|\b\d+(?:\.\d+)?\s*/\s*" + _SCALE + r"\b"                     # "8/10"
-    r"|\bout of " + _SCALE + r"\b"                                   # "7 out of 10"
-    r"|\b\d+(?:\.\d+)?\s*marks?\b"                                  # "6 marks"
-    r"|\b(?:score|marks?)\b[^\n]*\d"                                # "score ... 80%"
-    r").*$\n?")
+# A line that GRADES the answer: a score/mark/grade label, or a verb that awards a
+# number ("I'd give it 7 out of 10"). Ordinary feedback that merely contains a number
+# or a fraction ("17/5 gives q = 3", "Mark the 2 conditions") is kept.
+_LABEL_LINE = re.compile(
+    r"^\W*(?:overall\s+)?(?:score|scores|marks?(?:\s+awarded)?|grade|grading|rating|result|"
+    r"total|overall)\s*[:=\-]", re.I)
+_AWARD = re.compile(
+    r"\b(?:give|gave|award|awarded|score|scored|rate|rated|grade|graded|deserves?|earns?)\b"
+    r"(?:\s+\S+){0,3}?\s+\d+(?:\.\d+)?\s*(?:/\s*\d+|out\s+of\s+\d+|%|marks?\b|points?\b)", re.I)
 
 
 def _strip_marks(text: str) -> str:
     """'No marks' is a promise, not just a prompt request: drop any line that
-    scores the answer (Score: 8/10, 7 marks, 80%...)."""
-    return re.sub(r"\n{3,}", "\n\n", _MARK_LINE.sub("", text or "")).strip()
+    scores the answer (Score: 8/10, Grade: B+, 85% correct, 7 out of 10...)."""
+    kept = []
+    for line in (text or "").splitlines():
+        plain = re.sub(r"[*_`#>]", "", line).strip()
+        if _LABEL_LINE.match(plain) or _AWARD.search(plain):
+            continue
+        kept.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
 
 
 def grade(question: str, student_answer: str, user: str | None = None) -> dict:
@@ -73,7 +79,7 @@ def grade(question: str, student_answer: str, user: str | None = None) -> dict:
                 "mode": "", "sources": [],
                 "error": "Type both the question and your answer to get feedback."}
     hits, top_score, mode_label = _retrieve(question, user=user)
-    hits = hits[:TOP_K_GRADE]
+    hits = sorted(hits, key=lambda h: h["score"], reverse=True)[:TOP_K_GRADE]
     context = build_context(hits)
     grounded = _gate(question, context, top_score)
  

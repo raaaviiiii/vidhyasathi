@@ -105,13 +105,22 @@ _BROAD_PHRASES = (
     "what do my notes cover", "what does my material cover",
 )
 
-_WORD = re.compile(r"[^\W_]+", re.UNICODE)
+# Letters + digits + Indic combining marks (virama, vowel signs) + ZWJ/ZWNJ, so a
+# Malayalam or Hindi word stays ONE word instead of splitting at every vowel sign.
+_WORD = re.compile(r"(?:[^\W_]|[\u0900-\u0DFF\u200C\u200D])+", re.UNICODE)
 _STOP = {
     "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "from", "about",
     "is", "are", "was", "be", "it", "its", "this", "that", "these", "those", "what",
     "which", "how", "why", "me", "my", "i", "you", "your", "do", "does", "can", "please",
     "give", "tell", "explain", "describe", "list", "all", "every", "everything", "main",
-    "key", "important", "whole", "entire", "briefly", "go", "over", "s",
+    "key", "important", "whole", "entire", "briefly", "go", "over", "s", "us", "we", "our",
+    # politeness / framing of the request, never the topic
+    "could", "would", "will", "kindly", "hey", "hi", "hello", "just", "quick", "quickly",
+    "short", "shortly", "brief", "simple", "simply", "easy", "detailed", "help", "want",
+    "need", "like", "make", "write", "prepare", "create", "show", "so", "understand",
+    "bullet", "bullets", "point", "points", "form", "format", "way", "table", "words",
+    "tomorrow", "tomorrows", "today", "tonight", "exam", "exams", "test", "tests", "quiz",
+    "revision", "revise", "study", "studying", "prep", "before", "upcoming", "next",
 }
 # words that only name the scope or the request, never a topic
 _SCOPE = {
@@ -125,7 +134,7 @@ _SCOPE = {
 
 
 def _words(text: str) -> list[str]:
-    return [w for w in _WORD.findall((text or "").lower()) if len(w) > 1]
+    return [w for w in _WORD.findall((text or "").lower()) if len(w) > 1 or w.isdigit()]
 
 
 def _is_broad(question: str) -> bool:
@@ -141,19 +150,25 @@ def _broad_topic(question: str) -> str:
                     if w not in _STOP and w not in _SCOPE and not w.isdigit())
 
 
-def _match_document(topic: str, user: str | None) -> str | None:
-    """If the leftover topic names one of the student's documents ("the introduction
-    pptx"), return that document's citation label so the overview covers it."""
+def _match_documents(question: str, topic: str, user: str | None) -> list[str]:
+    """Labels of the student's documents the ask names: "summarise module 2" -> the
+    "Module 2" document; "my graphs notes" -> every document whose name has "graphs"."""
+    labels = list(user_sources(user))
+    qw = set(_words(question))
+    named = []
+    for label in labels:
+        lw = set(_words(label))
+        significant = {w for w in lw if w not in _STOP and w not in _SCOPE} | \
+                      {w for w in lw if w.isdigit()}
+        if significant and lw - _STOP <= qw:
+            named.append((len(lw), label))
+    if named:
+        best = max(n for n, _ in named)
+        return sorted(label for n, label in named if n == best)
     tw = set(topic.split())
     if not tw:
-        return None
-    best = None
-    for label in user_sources(user):
-        lw = set(_words(label)) - _STOP
-        if lw and tw <= lw:                 # every topic word is in the doc's name
-            if best is None or len(lw) < len(set(_words(best))):
-                best = label
-    return best
+        return []
+    return sorted(label for label in labels if tw <= set(_words(label)))
 
 
 # --- Layer 3: web-grounded, but re-expressed in the student's note style ------
@@ -195,10 +210,24 @@ def _is_refusal(text: str) -> bool:
     return "i don't have that in the material" in norm
  
  
+_ENTITY = re.compile(r"&(#0*91|#x0*5b|lbrack|lsqb|#0*93|#x0*5d|rbrack|rsqb|#0*183|#x0*b7|middot);",
+                     re.I)
+_ENTITY_MAP = {"91": "[", "5b": "[", "lbrack": "[", "lsqb": "[", "93": "]", "5d": "]",
+               "rbrack": "]", "rsqb": "]", "183": "\u00b7", "b7": "\u00b7", "middot": "\u00b7"}
+
+
+def _decode_tag_entities(text: str) -> str:
+    def rep(m):
+        k = m.group(1).lower().lstrip("#").lstrip("x").lstrip("0") if m.group(1).startswith("#") \
+            else m.group(1).lower()
+        return _ENTITY_MAP.get(k, m.group(0))
+    return _ENTITY.sub(rep, text)
+
+
 def _scrub_web_tags(text: str) -> str:
     """A web answer may ONLY carry [web \u00b7 ...] tags. Strip any hallucinated
     notes-style tag so web content can never be laundered as the student's own notes."""
-    text = _NON_WEB_TAG.sub("", text)
+    text = _NON_WEB_TAG.sub("", _decode_tag_entities(text))
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -321,6 +350,10 @@ _FOLLOWUP = {
     "another", "step", "steps", "show", "prove", "proof", "they", "them", "then", "so",
     "okay", "ok", "yes", "no", "sure", "and", "but", "also", "else", "other", "same",
     "one", "case", "cases", "use", "used", "happens", "happen", "part", "bit", "lot",
+    "term", "terms", "simple", "simpler", "easier", "plain", "real", "life", "analogy",
+    "confused", "confusing", "lost", "slower", "slow", "slowly", "repeat", "understood",
+    "sorry", "didn", "didnt", "still", "not", "very", "really", "little", "less", "shorter",
+    "say", "said", "mean", "meant", "point", "idea", "thing", "things", "previous", "above",
 }
 
 
@@ -334,10 +367,11 @@ def _material_lookup(question: str, mode: str, history: list[dict] | None,
     Returns (hits, top_score, mode_label, context, grounded, overview)."""
     if _is_broad(question):
         topic = _broad_topic(question)
-        doc = _match_document(topic, user) if topic else None
-        if not topic or doc:
-            # whole material (or one named document): grounded iff there is material
-            hits, top_score, label = _retrieve(question, user=user, broad=True, source=doc)
+        docs = _match_documents(question, topic, user)
+        if not topic or docs:
+            # whole material (or the named documents): grounded iff there is material
+            hits, top_score, label = _retrieve(question, user=user, broad=True,
+                                               source=docs or None)
             return hits, top_score, label, build_context(hits), bool(hits), True
         # a broad ask ABOUT a topic ("summarise quantum mechanics"): the topic itself
         # has to be in the material, exactly like a pointed question
@@ -357,9 +391,9 @@ def _material_lookup(question: str, mode: str, history: list[dict] | None,
         if wq != question:
             h2, s2, l2 = _retrieve(wq, user=user)
             c2 = build_context(h2)
-            ctx_low = c2.lower()
+            ctx_words = set(_words(c2))
             new = _new_topic_words(question)
-            if all(w in ctx_low for w in new) and _gate(wq, c2, s2):
+            if new <= ctx_words and _gate(wq, c2, s2):
                 return h2, s2, l2, c2, True, False
 
     return hits, top_score, label, context, False, False

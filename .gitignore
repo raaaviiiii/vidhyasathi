@@ -1,10 +1,16 @@
-cat > .gitignore << 'EOF'
 .venv/
 __pycache__/
 *.pyc
 .env
+.DS_Store
+.pytest_cache/
+
+# local data — never commit (accounts, students' uploads, vector store, OCR cache)
+users.db
+data/uploads/
 data/docs/*
 !data/docs/.gitkeep
 qdrant_storage/
-.DS_Store
-EOF
+qdrant_storage_server/
+ocr_cache.json
+ocr_cost_log.csv

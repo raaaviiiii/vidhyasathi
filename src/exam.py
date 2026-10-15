@@ -40,6 +40,16 @@ _DELIM = re.compile(r"^\s*-{3,}\s*$")
 _TAG = re.compile(r"\[[^\]\n]+\]")
 
 
+def _cites_known_source(answer: str, labels: set[str]) -> bool:
+    """True if the answer carries a [source \u00b7 loc] tag naming one of the student's
+    own sources. '[0, b-1]' or '[Physics \u00b7 p9]' (not theirs) don't count."""
+    for m in _TAG.finditer(answer or ""):
+        for part in re.split(r"[;,]\s*(?=[^\u00b7]*\u00b7)", m.group(0)[1:-1]):
+            if "\u00b7" in part and part.split("\u00b7")[0].strip().lower() in labels:
+                return True
+    return False
+
+
 def _parse_qa(text: str) -> list[dict]:
     """Parse the model's Q/A output into [{'q','a'}]. Tolerant of numbering
     ("1. Q:"), "Question/Answer" wording, markdown and missing delimiters."""
@@ -76,7 +86,8 @@ def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
                 "error": "Ask for at least one question on a topic."}
     n = min(n, MAX_N)
     hits, top_score, mode_label = _retrieve(topic, user=user)
-    hits = hits[:TOP_K_GEN]                    # focus on the most on-topic chunks
+    # the most on-topic chunks (small-KB hits arrive in document order, not by score)
+    hits = sorted(hits, key=lambda h: h["score"], reverse=True)[:TOP_K_GEN]
     context = build_context(hits)
     grounded = _gate(topic, context, top_score)
  
@@ -92,8 +103,9 @@ def generate(topic: str, n: int = 5, user: str | None = None) -> dict:
  
     raw = ask_llm(GEN_PROMPT.format(n=n),
                   f"Context passages:\n{context}\n\nTopic: {topic}")
-    # every practice answer must carry a citation; never more than asked for
-    items = [it for it in _parse_qa(raw) if _TAG.search(it["a"])][:n]
+    # every practice answer must cite one of THIS student's sources; never more than asked
+    labels = {h["source"].strip().lower() for h in hits}
+    items = [it for it in _parse_qa(raw) if _cites_known_source(it["a"], labels)][:n]
     return {"topic": topic, "grounded": True, "items": items, "raw": raw,
             "top_score": top_score, "mode": mode_label, "sources": sources}
  

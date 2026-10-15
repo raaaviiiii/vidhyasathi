@@ -22,6 +22,7 @@ import shutil
 import sqlite3
 import threading
 import time
+import unicodedata
 import uuid
 from contextlib import closing
 from pathlib import Path
@@ -38,8 +39,8 @@ from src.build_index import ingest_file
 from src.errors import ServiceDown, StoreUnavailable
 from src.exam import generate, MAX_N as EXAM_MAX_N
 from src.grade import grade
-from src.ingest import SUPPORTED
-from src.store import delete_doc, delete_user, user_docs
+from src.ingest import SUPPORTED, source_label
+from src.store import delete_doc, delete_legacy_source, delete_user, user_index, count_version
 
 BASE = Path(__file__).parent
 USERS_DB = BASE / "users.db"
@@ -50,8 +51,73 @@ ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("VS_ADMIN_EMAILS", "")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 app = FastAPI(title="Vidhyasathi")
+
+
+async def _send_json(send, status: int, payload: dict):
+    body = json.dumps(payload).encode()
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode())]})
+    await send({"type": "http.response.body", "body": body})
+
+
+class JsonErrors:
+    """Outermost safety net: anything that escapes as an exception (a crash in a
+    dependency, a locked database) still reaches the student as a JSON error."""
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.inner(scope, receive, send)
+        started = False
+
+        async def send_wrapper(msg):
+            nonlocal started
+            if msg["type"] == "http.response.start":
+                started = True
+            await send(msg)
+        try:
+            await self.inner(scope, receive, send_wrapper)
+        except Exception as e:
+            if started:
+                raise
+            if isinstance(e, sqlite3.OperationalError) or _is_connection_error(e):
+                await _send_json(send, 503, {"ok": False, "error":
+                                 "The server is busy. Please try again in a moment."})
+            else:
+                print(f"[vidhyasathi] unhandled error on {scope.get('path')}: {e!r}")
+                await _send_json(send, 500, {"ok": False, "error":
+                                 "Something went wrong on the server. Please try again."})
+
+
+class UploadGate:
+    """Refuse an upload BEFORE reading its body: no session -> 401, declared size over
+    the limit -> 413. Otherwise anyone with the share link could fill the disk."""
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method") == "POST" \
+                and scope.get("path") == "/api/upload":
+            hdrs = {k.decode("latin-1").lower(): v.decode("latin-1")
+                    for k, v in scope.get("headers", [])}
+            if _session_for(hdrs.get("authorization", "")) is None:
+                return await _send_json(send, 401, {"ok": False, "error": "Please sign in."})
+            cl = hdrs.get("content-length")
+            if cl is None or not cl.isdigit():
+                return await _send_json(send, 411, {"ok": False, "error":
+                                        "Upload size unknown. Please try again."})
+            if int(cl) > MAX_UPLOAD_MB * 1024 * 1024 + 64 * 1024:
+                return await _send_json(send, 413, {"ok": False, "indexed": False, "error":
+                                        f"That file is larger than {MAX_UPLOAD_MB} MB."})
+        return await self.inner(scope, receive, send)
+
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
+app.add_middleware(UploadGate)
+app.add_middleware(JsonErrors)
 
 
 # ====================================================================== errors
@@ -122,8 +188,13 @@ def _db():
     c = sqlite3.connect(USERS_DB, timeout=10)
     c.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT, "
               "email TEXT UNIQUE, pw TEXT, salt TEXT, created REAL)")
+    cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)")]
+    if cols and "user_id" not in cols:          # sessions are disposable: rebuild
+        c.execute("DROP TABLE sessions")
+    # A session belongs to one account ROW (user_id), not to an email: if the account
+    # is deleted and the email re-registered, old tokens no longer match anything.
     c.execute("CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, "
-              "email TEXT NOT NULL, created REAL, expires REAL)")
+              "user_id INTEGER NOT NULL, email TEXT NOT NULL, created REAL, expires REAL)")
     return c
 
 
@@ -135,35 +206,51 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _new_session(email: str) -> str:
+def _new_session(email: str) -> str | None:
+    """Mint a session for the account that currently owns `email`. None if that
+    account no longer exists (e.g. deleted while the sign-in was in flight)."""
     token = secrets.token_urlsafe(32)
     now = time.time()
     with closing(_db()) as c:
-        c.execute("INSERT INTO sessions VALUES(?,?,?,?)",
-                  (_token_hash(token), email, now, now + SESSION_DAYS * 86400))
+        cur = c.execute("INSERT INTO sessions(token_hash,user_id,email,created,expires) "
+                        "SELECT ?, id, email, ?, ? FROM users WHERE email=?",
+                        (_token_hash(token), now, now + SESSION_DAYS * 86400, email))
         c.execute("DELETE FROM sessions WHERE expires < ?", (now,))
         c.commit()
-    return token
+    return token if cur.rowcount == 1 else None
 
 
 class Student(BaseModel):
+    id: int
     email: str
     name: str
     token_hash: str
 
 
-def current_user(authorization: str = Header(default="")) -> Student:
+def _session_for(authorization: str) -> Student | None:
     token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
     if not token:
-        raise HTTPException(401, "Please sign in.")
+        return None
     th = _token_hash(token)
     with closing(_db()) as c:
-        row = c.execute("SELECT u.email, u.name FROM sessions s JOIN users u "
-                        "ON u.email = s.email WHERE s.token_hash=? AND s.expires>?",
+        row = c.execute("SELECT u.id, u.email, u.name FROM sessions s JOIN users u "
+                        "ON u.id = s.user_id WHERE s.token_hash=? AND s.expires>?",
                         (th, time.time())).fetchone()
-    if not row:
+    return Student(id=row[0], email=row[1], name=row[2], token_hash=th) if row else None
+
+
+def current_user(authorization: str = Header(default="")) -> Student:
+    if not authorization.lower().startswith("bearer ") or not authorization[7:].strip():
+        raise HTTPException(401, "Please sign in.")
+    u = _session_for(authorization)
+    if u is None:
         raise HTTPException(401, "Your session has expired. Please sign in again.")
-    return Student(email=row[0], name=row[1], token_hash=th)
+    return u
+
+
+def _account_exists(user_id: int) -> bool:
+    with closing(_db()) as c:
+        return c.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone() is not None
 
 
 _fail_lock = threading.Lock()
@@ -171,17 +258,52 @@ _failures: dict[str, list[float]] = {}
 MAX_FAILS, FAIL_WINDOW = 10, 15 * 60
 
 
+def _client_ip(request: Request) -> str:
+    """The real client behind the Cloudflare tunnel (which connects from localhost)."""
+    h = request.headers
+    ip = h.get("cf-connecting-ip") or (h.get("x-forwarded-for") or "").split(",")[0].strip()
+    return ip or (request.client.host if request.client else "?")
+
+
+def _prune_failures(now):
+    if len(_failures) > 200:
+        for k in [k for k, v in _failures.items() if not v or now - v[-1] >= FAIL_WINDOW]:
+            _failures.pop(k, None)
+
+
 def _too_many_failures(key: str) -> bool:
     now = time.time()
     with _fail_lock:
+        _prune_failures(now)
         recent = [t for t in _failures.get(key, []) if now - t < FAIL_WINDOW]
-        _failures[key] = recent
+        if recent:
+            _failures[key] = recent
+        else:
+            _failures.pop(key, None)
         return len(recent) >= MAX_FAILS
 
 
 def _record_failure(key: str):
     with _fail_lock:
         _failures.setdefault(key, []).append(time.time())
+        _prune_failures(time.time())
+
+
+def _clear_failures(key: str):
+    with _fail_lock:
+        _failures.pop(key, None)
+
+
+_doc_locks: dict[tuple, threading.RLock] = {}
+_doc_locks_guard = threading.Lock()
+
+
+def _doc_lock(email: str, name: str) -> threading.RLock:
+    """One upload at a time per (student, file), so two tabs uploading the same file
+    always end with exactly one consistent version."""
+    key = (email, name.lower())
+    with _doc_locks_guard:
+        return _doc_locks.setdefault(key, threading.RLock())
 
 
 def _user_dir(email: str) -> Path:
@@ -276,8 +398,17 @@ def health():
         pass
     try:
         import ollama
-        ollama.list()
-        out["llm"] = True
+        from src.config import LLM_MODEL
+        listed = ollama.list()
+        models = listed.get("models", []) if isinstance(listed, dict) else getattr(listed, "models", [])
+        names = set()
+        for m in models:
+            for k in ("model", "name"):
+                v = m.get(k) if isinstance(m, dict) else getattr(m, k, None)
+                if v:
+                    names.add(v)
+                    names.add(v.removesuffix(":latest"))
+        out["llm"] = LLM_MODEL in names or LLM_MODEL.removesuffix(":latest") in names
     except Exception:
         pass
     out["ok"] = out["qdrant"] and out["llm"]
@@ -286,6 +417,7 @@ def health():
 
 # ====================================================================== accounts
 @app.post("/api/signup")
+@guarded
 def signup(r: SignupReq):
     salt = secrets.token_hex(8)
     with closing(_db()) as c:
@@ -295,35 +427,48 @@ def signup(r: SignupReq):
             c.commit()
         except sqlite3.IntegrityError:
             return _err(409, "An account with that email already exists.")
-    return {"ok": True, "name": r.name, "email": r.email, "token": _new_session(r.email)}
+    token = _new_session(r.email)
+    if not token:
+        return _err(500, "Couldn't create your session. Please sign in.")
+    return {"ok": True, "name": r.name, "email": r.email, "token": token}
 
 
 _DUMMY_SALT = secrets.token_hex(8)
 
 
 @app.post("/api/login")
-def login(r: LoginReq):
+@guarded
+def login(r: LoginReq, request: Request):
     email = r.email.strip().lower()
-    if _too_many_failures(email):
+    # keyed by email AND client: a stranger guessing a classmate's password can't
+    # lock the classmate out of their own device
+    key = f"login|{email}|{_client_ip(request)}"
+    if _too_many_failures(key):
         return _err(429, "Too many wrong attempts. Wait 15 minutes and try again.")
     with closing(_db()) as c:
         row = c.execute("SELECT name,pw,salt FROM users WHERE email=?", (email,)).fetchone()
     if not row:
         _hash(r.password, _DUMMY_SALT)          # same work either way (no enumeration)
-        _record_failure(email)
+        _record_failure(key)
         return _err(401, "Wrong email or password.")
     if _hash(r.password, row[2]) != row[1]:
-        _record_failure(email)
+        _record_failure(key)
         return _err(401, "Wrong email or password.")
-    return {"ok": True, "name": row[0], "email": email, "token": _new_session(email)}
+    token = _new_session(email)
+    if not token:
+        return _err(401, "Wrong email or password.")
+    _clear_failures(key)
+    return {"ok": True, "name": row[0], "email": email, "token": token}
 
 
 @app.get("/api/me")
+@guarded
 def me(u: Student = Depends(current_user)):
     return {"ok": True, "name": u.name, "email": u.email}
 
 
 @app.post("/api/logout")
+@guarded
 def logout(u: Student = Depends(current_user)):
     with closing(_db()) as c:
         c.execute("DELETE FROM sessions WHERE token_hash=?", (u.token_hash,))
@@ -332,17 +477,23 @@ def logout(u: Student = Depends(current_user)):
 
 
 @app.post("/api/account/password")
+@guarded
 def change_password(r: PasswordReq, u: Student = Depends(current_user)):
+    key = f"pwchange|{u.id}"
+    if _too_many_failures(key):
+        return _err(429, "Too many wrong attempts. Wait 15 minutes and try again.")
     with closing(_db()) as c:
-        row = c.execute("SELECT pw,salt FROM users WHERE email=?", (u.email,)).fetchone()
+        row = c.execute("SELECT pw,salt FROM users WHERE id=?", (u.id,)).fetchone()
         if not row or _hash(r.old_password, row[1]) != row[0]:
+            _record_failure(key)
             return _err(403, "Current password is wrong.")
         salt = secrets.token_hex(8)
-        c.execute("UPDATE users SET pw=?, salt=? WHERE email=?",
-                  (_hash(r.new_password, salt), salt, u.email))
+        c.execute("UPDATE users SET pw=?, salt=? WHERE id=?",
+                  (_hash(r.new_password, salt), salt, u.id))
         # sign out every OTHER device; keep this one
-        c.execute("DELETE FROM sessions WHERE email=? AND token_hash<>?", (u.email, u.token_hash))
+        c.execute("DELETE FROM sessions WHERE user_id=? AND token_hash<>?", (u.id, u.token_hash))
         c.commit()
+    _clear_failures(key)
     return {"ok": True}
 
 
@@ -351,14 +502,14 @@ def change_password(r: PasswordReq, u: Student = Depends(current_user)):
 def delete_account(r: DeleteAccountReq, u: Student = Depends(current_user)):
     """Verify password, then remove the account, its sessions, chunks and files."""
     with closing(_db()) as c:
-        row = c.execute("SELECT pw,salt FROM users WHERE email=?", (u.email,)).fetchone()
+        row = c.execute("SELECT pw,salt FROM users WHERE id=?", (u.id,)).fetchone()
         if not row or _hash(r.password, row[1]) != row[0]:
             return _err(403, "Wrong password.")
     delete_user(u.email)                       # chunks first: if Qdrant is down, keep the account
     shutil.rmtree(_user_dir(u.email), ignore_errors=True)
     with closing(_db()) as c:
-        c.execute("DELETE FROM sessions WHERE email=?", (u.email,))
-        c.execute("DELETE FROM users WHERE email=?", (u.email,))
+        c.execute("DELETE FROM sessions WHERE user_id=?", (u.id,))
+        c.execute("DELETE FROM users WHERE id=?", (u.id,))
         c.commit()
     return {"ok": True}
 
@@ -396,16 +547,43 @@ def api_grade(r: GradeReq, u: Student = Depends(current_user)):
 
 
 # ====================================================================== material
+_KEEP_FORMAT = {"\u200c", "\u200d"}     # ZWNJ / ZWJ are real letters' glue in Malayalam
+
+
+def _clean_once(name: str) -> str:
+    name = unicodedata.normalize("NFC", name)
+    name = name.replace("\\", "/").split("/")[-1]
+    # drop control and invisible/bidi format characters ("lab\u202efdp.md" spoofing)
+    name = "".join(ch for ch in name
+                   if ch in _KEEP_FORMAT or unicodedata.category(ch)[0] != "C")
+    return name.strip().strip(".").strip()
+
+
 def _safe_name(filename: str | None) -> str | None:
-    """Reduce a client file name to a plain, safe base name (no folders, no
-    traversal, no hidden files). None if nothing usable is left."""
-    name = (filename or "").replace("\\", "/").split("/")[-1]
-    name = re.sub(r"[\x00-\x1f\x7f]", "", name).strip().strip(".")
+    """Reduce a client file name to a plain, safe base name: no folders, no traversal,
+    no hidden/temp names, no invisible characters, at most 150 bytes. Idempotent, so
+    the name the list shows is exactly the name a delete will find."""
+    name, prev = filename or "", None
+    while name != prev:
+        prev, name = name, _clean_once(name)
     if not name or name in (".", ".."):
         return None
-    if len(name) > 150:
-        p = Path(name)
-        name = p.stem[:150 - len(p.suffix)] + p.suffix
+    p = Path(name)
+    suffix = p.suffix if 1 < len(p.suffix) <= 10 else ""
+    stem = name[: len(name) - len(suffix)] if suffix else name
+    while len((stem + suffix).encode("utf-8")) > 150 and stem:
+        stem = stem[:-1]
+    stem = stem.rstrip(" .")
+    return (stem + suffix) if stem else None
+
+
+def _existing_name(folder: Path, name: str) -> str:
+    """Case-insensitive file systems (macOS) treat Notes.txt and notes.txt as one
+    file: reuse the stored spelling so the file and its chunks stay in step."""
+    low = name.lower()
+    for p in folder.iterdir():
+        if p.is_file() and not p.name.startswith(".") and p.name.lower() == low:
+            return p.name
     return name
 
 
@@ -414,11 +592,13 @@ def _safe_name(filename: str | None) -> str | None:
 def api_material(u: Student = Depends(current_user)):
     """Only THIS student's files, each flagged indexed / not indexed."""
     d = _user_dir(u.email)
-    live = user_docs(u.email)
-    docs = [{"name": p.name, "size": p.stat().st_size, "indexed": p.name in live}
-            for p in sorted(d.iterdir(), key=lambda x: x.name.lower())
-            if p.is_file() and not p.name.startswith(".")]
-    return {"ok": True, "docs": docs}
+    docs, legacy = user_index(u.email)
+    out = []
+    for p in sorted(d.iterdir(), key=lambda x: x.name.lower()):
+        if p.is_file() and not p.name.startswith("."):
+            live = p.name in docs or source_label(p) in legacy
+            out.append({"name": p.name, "size": p.stat().st_size, "indexed": live})
+    return {"ok": True, "docs": out}
 
 
 @app.post("/api/upload")
@@ -445,11 +625,28 @@ def api_upload(file: UploadFile = File(...), u: Student = Depends(current_user))
                 if size > limit:
                     raise HTTPException(413, f"That file is larger than {MAX_UPLOAD_MB} MB.")
                 f.write(chunk)
-        res = ingest_file(tmp, user=u.email, doc=name)
-        if not res.get("ok"):
-            return {"ok": False, "name": name, "indexed": False,
-                    "error": res.get("error", "Indexing failed.")}
-        os.replace(tmp, d / name)
+        with _doc_lock(u.email, name):
+            name = _existing_name(d, name)
+            res = ingest_file(tmp, user=u.email, doc=name)
+            if not res.get("ok"):
+                return {"ok": False, "name": name, "indexed": False,
+                        "error": res.get("error", "Indexing failed.")}
+            if not _account_exists(u.id):          # account deleted mid-upload
+                delete_doc(u.email, name)
+                return _err(401, "Your account no longer exists.", indexed=False)
+            removed = {"ok": False, "name": name, "indexed": False,
+                       "error": "The file was removed while it was being indexed."}
+            if count_version(u.email, name, res["ver"]) == 0:   # removed meanwhile
+                return removed
+            try:
+                os.replace(tmp, d / name)
+            except OSError:
+                delete_doc(u.email, name)
+                return {"ok": False, "name": name, "indexed": False,
+                        "error": "Couldn't save that file name on the server. Rename it and try again."}
+            if count_version(u.email, name, res["ver"]) == 0:   # removed during the move
+                (d / name).unlink(missing_ok=True)
+                return removed
         return {"ok": True, "name": name, "indexed": True, "chunks": res["chunks"],
                 "ocr": res.get("ocr", 0), "warnings": res.get("warnings", [])}
     finally:
@@ -461,9 +658,15 @@ def api_upload(file: UploadFile = File(...), u: Student = Depends(current_user))
 def api_material_delete(r: DeleteMaterialReq, u: Student = Depends(current_user)):
     """Remove one of the student's documents: its chunks and the file."""
     name = _safe_name(r.name)
-    p = _user_dir(u.email) / name if name else None
-    if not p or not p.is_file():
+    d = _user_dir(u.email)
+    if not name:
         return _err(404, "Not found.")
-    delete_doc(u.email, name)
+    # No lock here: a delete is idempotent, and an upload of the same file re-checks
+    # its chunks after moving the file into place, so the two always end consistent.
+    p = d / _existing_name(d, name)
+    if not p.is_file():
+        return _err(404, "Not found.")
     p.unlink(missing_ok=True)
-    return {"ok": True, "name": name}
+    delete_doc(u.email, p.name)
+    delete_legacy_source(u.email, source_label(p))
+    return {"ok": True, "name": p.name}

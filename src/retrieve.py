@@ -3,12 +3,13 @@ Limit capped at KB size (adaptive to document size).
 """
 from src.config import COLLECTION_NAME, RETRIEVE_CANDIDATES
 from src.embed import embed_query
-from qdrant_client.models import FieldCondition, MatchValue
+from qdrant_client.models import FieldCondition, MatchAny, MatchValue
 from src.store import get_client, count, user_filter
 
 
 def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES,
-             user: str | None = None, source: str | None = None) -> list[dict]:
+             user: str | None = None, source=None) -> list[dict]:
+    """`source` scopes to one document label, or a list of labels."""
     client = get_client()
     total = count(user)               # 0 when the collection doesn't exist yet
     if total == 0:
@@ -19,8 +20,10 @@ def retrieve(question: str, top_k: int = RETRIEVE_CANDIDATES,
     hits = client.query_points(
         collection_name=COLLECTION_NAME,
         query=qvec,
-        query_filter=(user_filter(user, FieldCondition(key="source",
-                                                       match=MatchValue(value=source)))
+        query_filter=(user_filter(user, FieldCondition(
+                          key="source",
+                          match=(MatchAny(any=list(source)) if isinstance(source, (list, tuple, set))
+                                 else MatchValue(value=source))))
                       if source else user_filter(user)),
         limit=limit,
         with_payload=True,
