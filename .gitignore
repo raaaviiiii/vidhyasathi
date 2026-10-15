@@ -14,3 +14,4 @@ qdrant_storage/
 qdrant_storage_server/
 ocr_cache.json
 ocr_cost_log.csv
+eval/            # test sets and reports quote your notes
